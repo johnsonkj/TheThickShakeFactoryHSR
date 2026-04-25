@@ -6,6 +6,16 @@ A simple internal website for shop workers to fill the opening checklist, closin
 
 ---
 
+## 🔑 Account Credentials
+
+The Firebase project (**TTSF-HSR-Tracker**) is registered under the **TTSF shop Gmail account**. To log in to the Firebase console, view stored data, or change anything in Firebase, sign in to [console.firebase.google.com](https://console.firebase.google.com) using the TTSF shop Gmail credentials.
+
+The GitHub repository hosting this site is also managed via the same TTSF shop Gmail account.
+
+> The actual email address and password are not stored in this file (this repo is public). They are kept separately in a private note.
+
+---
+
 ## 📁 Project Files
 
 | File | Purpose |
