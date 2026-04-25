@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Owner Dashboard — The Shake Factory</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-white to-amber-50 min-h-screen">
+  <!-- Login Screen -->
+  <div id="loginScreen" class="min-h-screen flex items-center justify-center px-4">
+    <div class="bg-white rounded-2xl p-8 shadow-xl max-w-sm w-full">
+      <div class="text-center mb-6">
+        <div class="text-5xl mb-2">🔒</div>
+        <h1 class="text-2xl font-bold text-gray-800">Owner Login</h1>
+        <p class="text-sm text-gray-500">The Shake Factory</p>
+      </div>
+      <input
+        id="passwordInput"
+        type="password"
+        placeholder="Enter password"
+        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-amber-400 focus:outline-none mb-3"
+      />
+      <button id="loginBtn" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-lg shadow-md">
+        Login
+      </button>
+      <p id="loginErr" class="text-sm text-red-500 mt-3 text-center hidden">Incorrect password</p>
+      <a href="index.html" class="block text-center text-xs text-gray-400 mt-4 hover:text-gray-600">← Back to home</a>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard" class="hidden max-w-6xl mx-auto px-4 py-8">
+    <header class="flex items-center justify-between flex-wrap gap-2 mb-6">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-800">Owner Dashboard</h1>
+        <p class="text-sm text-gray-500">The Shake Factory</p>
+      </div>
+      <div class="flex gap-2">
+        <a href="index.html" class="px-4 py-2 bg-white text-gray-600 rounded-lg shadow-sm hover:shadow-md text-sm">Worker View</a>
+        <button id="logoutBtn" class="px-4 py-2 bg-gray-800 text-white rounded-lg shadow-sm hover:bg-gray-900 text-sm">Logout</button>
+      </div>
+    </header>
+
+    <!-- Date selector -->
+    <div class="bg-white rounded-2xl p-4 shadow-md mb-6 flex items-center gap-3 flex-wrap">
+      <label class="text-sm font-semibold text-gray-700">View Date:</label>
+      <input id="datePicker" type="date" class="px-3 py-2 border border-gray-300 rounded-lg focus:border-amber-400 focus:outline-none" />
+      <button id="todayBtn" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm">Today</button>
+    </div>
+
+    <!-- Section: Today's checklists -->
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div class="bg-white rounded-2xl p-6 shadow-md border-l-4 border-green-400">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-bold text-gray-800">🌅 Opening Checklist</h2>
+          <span id="openingStatus" class="text-xs px-2 py-1 rounded-full bg-gray-100">—</span>
+        </div>
+        <div id="openingDetails" class="text-sm text-gray-600">Loading...</div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-6 shadow-md border-l-4 border-blue-400">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-bold text-gray-800">🌙 Closing Checklist</h2>
+          <span id="closingStatus" class="text-xs px-2 py-1 rounded-full bg-gray-100">—</span>
+        </div>
+        <div id="closingDetails" class="text-sm text-gray-600">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Section: Low Stock Alert -->
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-red-400">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 class="text-lg font-bold text-gray-800">⚠️ Items Below Reorder Threshold</h2>
+        <button id="exportBtn" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold">Export Order List (CSV)</button>
+      </div>
+      <p class="text-xs text-gray-500 mb-4">Based on the most recent inventory entry.</p>
+      <div id="lowStockList" class="text-sm">Loading...</div>
+    </div>
+
+    <!-- Section: Full Inventory -->
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6">
+      <h2 class="text-lg font-bold text-gray-800 mb-4">📦 Inventory Snapshot</h2>
+      <div id="inventoryFull" class="text-sm">Loading...</div>
+    </div>
+
+    <!-- Section: Recent Activity -->
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6">
+      <h2 class="text-lg font-bold text-gray-800 mb-4">📅 Last 14 Days Activity</h2>
+      <div id="recentActivity">Loading...</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { OWNER_PASSWORD } from './firebase-config.js';
+    import { getChecklistByDate, getInventoryByDate, getLatestInventory, getRecentActivity } from './app.js';
+    import { INVENTORY } from './inventory-data.js';
+
+    // ===== LOGIN =====
+    const sessionKey = 'tsf_owner_session';
+    function isLoggedIn() {
+      return sessionStorage.getItem(sessionKey) === 'yes';
+    }
+    function showDashboard() {
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      loadDashboard();
+    }
+    if (isLoggedIn()) showDashboard();
+
+    document.getElementById('loginBtn').addEventListener('click', () => {
+      const pw = document.getElementById('passwordInput').value;
+      if (pw === OWNER_PASSWORD) {
+        sessionStorage.setItem(sessionKey, 'yes');
+        showDashboard();
+      } else {
+        document.getElementById('loginErr').classList.remove('hidden');
+      }
+    });
+    document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') document.getElementById('loginBtn').click();
+    });
+
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
+      sessionStorage.removeItem(sessionKey);
+      location.reload();
+    });
+
+    // ===== DASHBOARD =====
+    function todayStr() {
+      const d = new Date();
+      return d.toISOString().split('T')[0];
+    }
+
+    function loadDashboard() {
+      const datePicker = document.getElementById('datePicker');
+      datePicker.value = todayStr();
+      datePicker.addEventListener('change', () => loadForDate(datePicker.value));
+      document.getElementById('todayBtn').addEventListener('click', () => {
+        datePicker.value = todayStr();
+        loadForDate(todayStr());
+      });
+      loadForDate(todayStr());
+      loadLowStock();
+      loadRecent();
+    }
+
+    async function loadForDate(date) {
+      // Opening
+      try {
+        const opening = await getChecklistByDate('opening', date);
+        renderChecklist('opening', opening, 21);
+      } catch (e) { renderChecklist('opening', null, 21); }
+
+      // Closing
+      try {
+        const closing = await getChecklistByDate('closing', date);
+        renderChecklist('closing', closing, 7);
+      } catch (e) { renderChecklist('closing', null, 7); }
+
+      // Inventory
+      try {
+        const inv = await getInventoryByDate(date);
+        renderInventory(inv);
+      } catch (e) { renderInventory(null); }
+    }
+
+    function renderChecklist(type, data, total) {
+      const statusEl = document.getElementById(`${type}Status`);
+      const detailsEl = document.getElementById(`${type}Details`);
+
+      if (!data) {
+        statusEl.textContent = 'No data';
+        statusEl.className = 'text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500';
+        detailsEl.innerHTML = '<p class="text-gray-400 italic">Not submitted for this date.</p>';
+        return;
+      }
+
+      const done = data.tasks.filter(t => t).length;
+      const allDone = done === total;
+      statusEl.textContent = `${done} / ${total}`;
+      statusEl.className = `text-xs px-2 py-1 rounded-full ${allDone ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`;
+
+      const time = new Date(data.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      const incomplete = data.tasks.map((checked, i) => ({ checked, i })).filter(t => !t.checked);
+
+      let html = `
+        <p class="mb-2"><span class="text-gray-400">Worker:</span> <span class="font-semibold">${data.worker || 'Unknown'}</span></p>
+        <p class="mb-2"><span class="text-gray-400">Submitted:</span> ${time}</p>
+      `;
+      if (incomplete.length > 0) {
+        html += `<p class="text-red-600 font-semibold mt-2">Incomplete tasks: ${incomplete.length}</p>`;
+        html += `<ul class="text-xs text-red-500 mt-1 list-disc list-inside">`;
+        incomplete.slice(0, 5).forEach(t => { html += `<li>Task #${t.i + 1}</li>`; });
+        if (incomplete.length > 5) html += `<li>...and ${incomplete.length - 5} more</li>`;
+        html += `</ul>`;
+      } else {
+        html += `<p class="text-green-600 font-semibold mt-2">✓ All tasks completed</p>`;
+      }
+      detailsEl.innerHTML = html;
+    }
+
+    function renderInventory(data) {
+      const el = document.getElementById('inventoryFull');
+      if (!data) {
+        el.innerHTML = '<p class="text-gray-400 italic">No inventory submitted for this date.</p>';
+        return;
+      }
+      const time = new Date(data.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      let html = `<p class="text-xs text-gray-500 mb-3">Worker: <strong>${data.worker || 'Unknown'}</strong> · Submitted at ${time}</p>`;
+
+      Object.entries(INVENTORY).forEach(([catKey, cat]) => {
+        const catData = data.items[catKey] || {};
+        const itemCount = Object.keys(catData).length;
+        if (itemCount === 0) return;
+        html += `<details class="mb-2 bg-gray-50 rounded-lg" ${itemCount > 0 ? '' : ''}>
+          <summary class="cursor-pointer p-3 font-semibold text-gray-700">${cat.icon} ${cat.label} <span class="text-xs text-gray-400">(${itemCount} items)</span></summary>
+          <div class="p-3 pt-0">
+            <table class="w-full text-xs">
+              <thead><tr class="text-left text-gray-400"><th class="py-1">Item</th><th class="py-1 text-right">Qty</th><th class="py-1 text-right">Unit</th></tr></thead>
+              <tbody>`;
+
+        // Build a map of item -> {unit, threshold}
+        const itemMeta = {};
+        Object.values(cat.sections).flat().forEach(item => {
+          itemMeta[item.name] = item;
+        });
+
+        Object.entries(catData).forEach(([name, qty]) => {
+          const meta = itemMeta[name] || { unit: '', threshold: 0 };
+          const isLow = qty < meta.threshold;
+          html += `<tr class="${isLow ? 'text-red-600 font-semibold' : 'text-gray-700'}">
+            <td class="py-1">${name} ${isLow ? '⚠️' : ''}</td>
+            <td class="py-1 text-right">${qty}</td>
+            <td class="py-1 text-right text-gray-400">${meta.unit}</td>
+          </tr>`;
+        });
+        html += `</tbody></table></div></details>`;
+      });
+
+      el.innerHTML = html;
+    }
+
+    let lowStockData = []; // for export
+
+    async function loadLowStock() {
+      const el = document.getElementById('lowStockList');
+      try {
+        const data = await getLatestInventory();
+        if (!data) {
+          el.innerHTML = '<p class="text-gray-400 italic">No inventory data yet.</p>';
+          return;
+        }
+
+        const lowItems = [];
+        Object.entries(INVENTORY).forEach(([catKey, cat]) => {
+          const catData = data.items[catKey] || {};
+          const itemMeta = {};
+          Object.values(cat.sections).flat().forEach(item => {
+            itemMeta[item.name] = item;
+          });
+          Object.entries(catData).forEach(([name, qty]) => {
+            const meta = itemMeta[name];
+            if (meta && qty < meta.threshold) {
+              lowItems.push({ category: cat.label, name, qty, threshold: meta.threshold, unit: meta.unit });
+            }
+          });
+        });
+
+        lowStockData = lowItems;
+
+        if (lowItems.length === 0) {
+          el.innerHTML = '<p class="text-green-600 font-semibold">✓ All items above reorder threshold!</p>';
+          return;
+        }
+
+        let html = `<p class="text-sm text-gray-500 mb-3">${lowItems.length} item${lowItems.length > 1 ? 's' : ''} need to be reordered:</p>`;
+        html += `<table class="w-full text-sm">
+          <thead><tr class="text-left text-gray-500 border-b">
+            <th class="py-2">Item</th><th class="py-2">Category</th>
+            <th class="py-2 text-right">Current</th><th class="py-2 text-right">Threshold</th>
+          </tr></thead><tbody>`;
+        lowItems.forEach(item => {
+          html += `<tr class="border-b border-gray-50">
+            <td class="py-2 font-semibold text-red-600">${item.name}</td>
+            <td class="py-2 text-gray-500 text-xs">${item.category}</td>
+            <td class="py-2 text-right">${item.qty} ${item.unit}</td>
+            <td class="py-2 text-right text-gray-400">${item.threshold} ${item.unit}</td>
+          </tr>`;
+        });
+        html += `</tbody></table>`;
+        el.innerHTML = html;
+      } catch (err) {
+        el.innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
+      }
+    }
+
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      if (lowStockData.length === 0) {
+        alert('No items to export.');
+        return;
+      }
+      let csv = 'Item,Category,Current Qty,Reorder Threshold,Unit\n';
+      lowStockData.forEach(i => {
+        csv += `"${i.name}","${i.category}",${i.qty},${i.threshold},"${i.unit}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `order-list-${todayStr()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    async function loadRecent() {
+      const el = document.getElementById('recentActivity');
+      try {
+        const data = await getRecentActivity(14);
+        if (!data || data.length === 0) {
+          el.innerHTML = '<p class="text-gray-400 italic">No activity yet.</p>';
+          return;
+        }
+        let html = `<table class="w-full text-sm">
+          <thead><tr class="text-left text-gray-500 border-b">
+            <th class="py-2">Date</th>
+            <th class="py-2 text-center">Opening</th>
+            <th class="py-2 text-center">Closing</th>
+            <th class="py-2 text-center">Inventory</th>
+          </tr></thead><tbody>`;
+        data.forEach(row => {
+          html += `<tr class="border-b border-gray-50">
+            <td class="py-2 font-semibold">${row.date}</td>
+            <td class="py-2 text-center">${row.opening ? '✅' : '—'}</td>
+            <td class="py-2 text-center">${row.closing ? '✅' : '—'}</td>
+            <td class="py-2 text-center">${row.inventory ? '✅' : '—'}</td>
+          </tr>`;
+        });
+        html += `</tbody></table>`;
+        el.innerHTML = html;
+      } catch (err) {
+        el.innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
+      }
+    }
+  </script>
+</body>
+</html>

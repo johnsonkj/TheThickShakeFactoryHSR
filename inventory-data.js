@@ -1,0 +1,193 @@
+// Master inventory items - organized by category (sheet)
+// Edit this file to add/remove items or change reorder thresholds.
+// "threshold" = below this number, the item gets flagged as "low stock" on owner dashboard.
+
+export const INVENTORY = {
+  thickshakes_milkshakes: {
+    label: "Thickshakes & Milkshakes",
+    icon: "🥤",
+    sections: {
+      "Ice Cream": [
+        { name: "Vanilla", unit: "tubs", threshold: 5 },
+        { name: "Chocolate", unit: "tubs", threshold: 5 },
+        { name: "Mango", unit: "tubs", threshold: 2 },
+        { name: "Butterscotch", unit: "tubs", threshold: 3 },
+        { name: "Hazelnut", unit: "tubs", threshold: 3 },
+        { name: "Strawberry", unit: "tubs", threshold: 2 },
+        { name: "Real Chickoo", unit: "tubs", threshold: 2 },
+      ],
+      "Packaging": [
+        { name: "300ml Sipper Cups", unit: "pcs", threshold: 30 },
+        { name: "200ml Small Cups", unit: "pcs", threshold: 50 },
+        { name: "TTSF Shake Outer Cover", unit: "pcs", threshold: 30 },
+        { name: "Single Brown Bag", unit: "pcs", threshold: 30 },
+        { name: "Double Brown Bag", unit: "pcs", threshold: 20 },
+        { name: "Dry Ice", unit: "kg", threshold: 1 },
+        { name: "Big Spoon", unit: "pkts", threshold: 1 },
+        { name: "Small Spoon", unit: "pkts", threshold: 1 },
+        { name: "Straws", unit: "pkts", threshold: 1 },
+        { name: "Tissues", unit: "pkts", threshold: 2 },
+        { name: "Cello Tapes", unit: "pcs", threshold: 1 },
+      ],
+      "Dry Material": [
+        { name: "Ice Cubes", unit: "kg", threshold: 2 },
+        { name: "Milk", unit: "ltr", threshold: 5 },
+        { name: "Brownies", unit: "pcs", threshold: 15 },
+        { name: "Chocolate Syrup", unit: "btl", threshold: 1 },
+        { name: "Caramel Syrup", unit: "btl", threshold: 1 },
+        { name: "Hazelnut Paste", unit: "btl", threshold: 1 },
+        { name: "Peanut Butter Paste", unit: "gm", threshold: 200 },
+        { name: "Chocochip", unit: "gm", threshold: 300 },
+        { name: "Butterscotch Nuts", unit: "gm", threshold: 300 },
+        { name: "Ferrero Rocher", unit: "pcs", threshold: 6 },
+        { name: "Ferrero Moments", unit: "pcs", threshold: 6 },
+        { name: "Kitkat", unit: "pcs", threshold: 15 },
+        { name: "Oreo", unit: "pcs", threshold: 8 },
+        { name: "Snickers", unit: "pcs", threshold: 5 },
+        { name: "Bru Sachet", unit: "pkts", threshold: 1 },
+        { name: "5 Star", unit: "pcs", threshold: 5 },
+        { name: "Munch", unit: "pcs", threshold: 5 },
+        { name: "Chocolate Stick", unit: "pcs", threshold: 5 },
+        { name: "Strawberry Stick", unit: "pcs", threshold: 5 },
+        { name: "Chocolate Wafer", unit: "pcs", threshold: 5 },
+        { name: "Strawberry Wafer", unit: "pcs", threshold: 5 },
+        { name: "Strawberry Crush", unit: "btl", threshold: 1 },
+        { name: "Blueberry Crush", unit: "gm", threshold: 200 },
+        { name: "Orange Crush", unit: "btl", threshold: 1 },
+        { name: "Green Apple Crush", unit: "btl", threshold: 1 },
+        { name: "Butterscotch Crush", unit: "btl", threshold: 1 },
+        { name: "Pineapple Crush", unit: "btl", threshold: 1 },
+        { name: "Litchi Crush", unit: "btl", threshold: 1 },
+        { name: "Mojito Mint", unit: "btl", threshold: 1 },
+        { name: "Blue Curacao", unit: "btl", threshold: 1 },
+        { name: "Lemon Ice Tea", unit: "btl", threshold: 1 },
+        { name: "Peach Ice Tea", unit: "btl", threshold: 1 },
+        { name: "Honey", unit: "btl", threshold: 1 },
+        { name: "Nutella", unit: "btl", threshold: 1 },
+      ],
+      "Dry Fruits": [
+        { name: "Roasted Kaju", unit: "gm", threshold: 200 },
+        { name: "Roasted Almonds", unit: "gm", threshold: 100 },
+        { name: "Roasted Peanuts", unit: "gm", threshold: 200 },
+        { name: "Anjeer", unit: "gm", threshold: 100 },
+      ],
+      "Fresh": [
+        { name: "Banana", unit: "pcs", threshold: 6 },
+        { name: "Mint", unit: "bunch", threshold: 1 },
+        { name: "Mango", unit: "kg", threshold: 1 },
+        { name: "Strawberry", unit: "pkts", threshold: 1 },
+        { name: "Apple", unit: "pcs", threshold: 4 },
+        { name: "Litchi Tin", unit: "tin", threshold: 1 },
+        { name: "Pineapple Tin", unit: "tin", threshold: 1 },
+      ],
+      "Scoop Ice Cream": [
+        { name: "Cookies and Cream", unit: "tubs", threshold: 2 },
+        { name: "Blackcurrant", unit: "tubs", threshold: 2 },
+        { name: "Chocolate", unit: "tubs", threshold: 3 },
+      ],
+    }
+  },
+
+  scoops_cones_sundaes: {
+    label: "Scoops, Cones & Sundaes",
+    icon: "🍦",
+    sections: {
+      "Ice Cream Scoops": [
+        { name: "Swiss/Belgian Chocolate Scoop", unit: "tubs", threshold: 2 },
+        { name: "Vanilla Scoop", unit: "tubs", threshold: 2 },
+        { name: "Choco Power Scoop", unit: "tubs", threshold: 2 },
+        { name: "Strawberry Scoop", unit: "tubs", threshold: 2 },
+        { name: "Black Currant Scoop", unit: "tubs", threshold: 2 },
+        { name: "Caramel Nuts Scoop", unit: "tubs", threshold: 2 },
+        { name: "Butterscotch Scoop", unit: "tubs", threshold: 2 },
+        { name: "Real Chickoo Scoop", unit: "tubs", threshold: 2 },
+        { name: "Real Mango Scoop", unit: "tubs", threshold: 2 },
+        { name: "Coffee Mocha Scoop", unit: "tubs", threshold: 2 },
+        { name: "Cookies & Cream Scoop", unit: "tubs", threshold: 2 },
+        { name: "Berry Land Scoop", unit: "tubs", threshold: 2 },
+        { name: "Biscoff Scoop", unit: "tubs", threshold: 2 },
+      ],
+      "Packaging": [
+        { name: "100 ml Single Scoop Cups", unit: "pcs", threshold: 30 },
+        { name: "200 ml Double Scoop Cups", unit: "pcs", threshold: 30 },
+        { name: "250 ml Dine-in Sundae Cups", unit: "pcs", threshold: 20 },
+        { name: "350 ml Takeaway Sundae Cups", unit: "pcs", threshold: 20 },
+        { name: "Ice Cream Spoons", unit: "pkts", threshold: 1 },
+        { name: "Testing Spoons", unit: "pkts", threshold: 1 },
+        { name: "Tissues", unit: "pkts", threshold: 2 },
+      ],
+      "Dry Material": [
+        { name: "Caramel Fudge", unit: "btl", threshold: 1 },
+        { name: "Hot Chocolate Fudge", unit: "btl", threshold: 1 },
+        { name: "Roasted Cashews", unit: "gm", threshold: 200 },
+        { name: "Roasted Peanuts", unit: "gm", threshold: 200 },
+        { name: "Whipped Cream", unit: "btl", threshold: 1 },
+        { name: "Cone Mix", unit: "kg", threshold: 1 },
+      ],
+      "Fruits": [
+        { name: "Banana", unit: "pcs", threshold: 6 },
+      ],
+      "Recipe Items": [
+        { name: "Brownies", unit: "pcs", threshold: 15 },
+        { name: "Hot Chocolate Fudge (prepped)", unit: "btl", threshold: 1 },
+        { name: "Whipped Cream (prepped)", unit: "btl", threshold: 1 },
+      ],
+    }
+  },
+
+  waffles: {
+    label: "Waffles",
+    icon: "🧇",
+    sections: {
+      "Waffle Mix": [
+        { name: "Swiss Bake Crispy Vanilla Mix", unit: "kg", threshold: 1 },
+        { name: "Swiss Bake Brownie Mix", unit: "kg", threshold: 1 },
+        { name: "Swiss Bake Red Velvet Mix", unit: "kg", threshold: 1 },
+        { name: "Pillsbury Brownie Mix", unit: "kg", threshold: 1 },
+      ],
+      "Packaging Material": [
+        { name: "Trays", unit: "pcs", threshold: 20 },
+        { name: "Waffle Box", unit: "pcs", threshold: 20 },
+        { name: "Sleeves", unit: "pcs", threshold: 20 },
+        { name: "Tissues", unit: "pkts", threshold: 2 },
+      ],
+      "Dry Materials": [
+        { name: "Morde Dark Chocolate Spread", unit: "kg", threshold: 1 },
+        { name: "Morde Milk Chocolate Spread", unit: "kg", threshold: 1 },
+        { name: "Morde White Chocolate Spread", unit: "kg", threshold: 1 },
+        { name: "Morde Butterscotch Spread", unit: "kg", threshold: 1 },
+        { name: "Morde Coffee Spread", unit: "kg", threshold: 1 },
+        { name: "Almond Cocoa Butter", unit: "kg", threshold: 1 },
+        { name: "Cream Cheese", unit: "kg", threshold: 1 },
+        { name: "Oil", unit: "ltr", threshold: 1 },
+        { name: "Tutti Fruity", unit: "gm", threshold: 200 },
+        { name: "Caster Sugar", unit: "kg", threshold: 1 },
+      ],
+    }
+  },
+
+  hygiene_cleaning: {
+    label: "Hygiene & Cleaning",
+    icon: "🧼",
+    sections: {
+      "Hygiene": [
+        { name: "Nitrile Gloves", unit: "box", threshold: 1 },
+        { name: "Cap", unit: "pcs", threshold: 5 },
+        { name: "Apron", unit: "pcs", threshold: 3 },
+        { name: "Hair Net", unit: "pkts", threshold: 1 },
+        { name: "Mask", unit: "pkts", threshold: 1 },
+        { name: "Tissues", unit: "pkts", threshold: 2 },
+        { name: "Bill Roll", unit: "pcs", threshold: 3 },
+        { name: "Card Roll", unit: "pcs", threshold: 3 },
+      ],
+      "Cleaning": [
+        { name: "Garbage Bag XL", unit: "pkts", threshold: 1 },
+        { name: "Garbage Bag XXL", unit: "pkts", threshold: 1 },
+        { name: "Mop", unit: "pcs", threshold: 1 },
+        { name: "Sweeper", unit: "pcs", threshold: 1 },
+        { name: "Dish Wash Liquid", unit: "btl", threshold: 1 },
+        { name: "Floor Cleaning Liquid", unit: "btl", threshold: 1 },
+      ],
+    }
+  },
+};

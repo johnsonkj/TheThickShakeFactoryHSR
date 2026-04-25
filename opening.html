@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Opening Checklist — The Shake Factory</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-green-50 via-white to-amber-50 min-h-screen">
+  <div class="max-w-3xl mx-auto px-4 py-8">
+    <a href="index.html" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4">← Back to Home</a>
+
+    <header class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-green-400">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 class="text-2xl font-bold text-gray-800">🌅 Opening Checklist</h1>
+          <p class="text-sm text-gray-500" id="dateDisplay"></p>
+        </div>
+        <div class="text-right">
+          <div class="text-xs text-gray-500">Progress</div>
+          <div class="text-2xl font-bold text-green-600" id="progressText">0 / 21</div>
+        </div>
+      </div>
+      <div class="mt-3 w-full bg-gray-200 rounded-full h-2">
+        <div id="progressBar" class="bg-green-400 h-2 rounded-full transition-all" style="width: 0%"></div>
+      </div>
+    </header>
+
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6">
+      <ul id="checklistItems" class="space-y-3"></ul>
+    </div>
+
+    <button id="submitBtn" class="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-md transition-all">
+      Save Opening Checklist
+    </button>
+
+    <div id="message" class="mt-4 text-center"></div>
+  </div>
+
+  <script type="module">
+    import { saveChecklist, getTodayChecklist } from './app.js';
+
+    const tasks = [
+      "Switch ON the computer, connect to Wi-Fi, and open the Rista application",
+      "Switch ON the shop phone, connect to Wi-Fi, open the Rista application, and plug it in for charging",
+      "Switch ON the weighing machine",
+      "Switch ON the neon lights and offer board lights",
+      "Sweep and mop the entire area",
+      "Clean the glass door",
+      "Clean all tables (inside and outside)",
+      "Clean blender, waffle machine, cone machine, measuring spoons, scoopers, and mixing spoons",
+      "Clean display freezer glass and side walls",
+      "Check bananas, mint leaves, and lemons; purchase if needed",
+      "Check water can; order if required",
+      "Check cello tape and stapler pins; order if needed",
+      "Refill thickshake cups, chocolates, straws, and tissues",
+      "Refill packaging items: brown covers, sundae cups, scoop cups, and spoons",
+      "Refill waffle items: spreads and waffle mix",
+      "Update inventory list and order low stock items",
+      "Fill the sales report",
+      "Prepare cones, brownies, cakes, and chocolate sauce",
+      "Prepare waffle mixes and store properly",
+      "Check Swiggy and Zomato online status",
+      "Update item availability in Rista application"
+    ];
+
+    const today = new Date();
+    document.getElementById('dateDisplay').textContent = today.toLocaleDateString('en-IN', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    const list = document.getElementById('checklistItems');
+    tasks.forEach((task, i) => {
+      const li = document.createElement('li');
+      li.className = "flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer";
+      li.innerHTML = `
+        <input type="checkbox" id="task-${i}" class="mt-1 w-5 h-5 accent-green-500 cursor-pointer" />
+        <label for="task-${i}" class="flex-1 cursor-pointer">
+          <span class="text-xs text-gray-400 mr-2">${i + 1}.</span>
+          <span class="text-gray-700">${task}</span>
+        </label>
+      `;
+      list.appendChild(li);
+    });
+
+    function updateProgress() {
+      const checked = document.querySelectorAll('#checklistItems input:checked').length;
+      const total = tasks.length;
+      document.getElementById('progressText').textContent = `${checked} / ${total}`;
+      document.getElementById('progressBar').style.width = `${(checked / total) * 100}%`;
+    }
+
+    document.querySelectorAll('#checklistItems input').forEach(cb => {
+      cb.addEventListener('change', updateProgress);
+    });
+
+    // Pre-fill if already saved today
+    getTodayChecklist('opening').then(data => {
+      if (data && data.tasks) {
+        data.tasks.forEach((checked, i) => {
+          const cb = document.getElementById(`task-${i}`);
+          if (cb) cb.checked = checked;
+        });
+        updateProgress();
+        if (data.completed) {
+          document.getElementById('message').innerHTML = '<p class="text-sm text-green-600">✓ Already saved today. You can update and save again.</p>';
+        }
+      }
+    }).catch(err => console.error(err));
+
+    document.getElementById('submitBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      const checked = Array.from(document.querySelectorAll('#checklistItems input')).map(cb => cb.checked);
+      const allDone = checked.every(c => c);
+      const worker = prompt('Worker name (for record):') || 'Unknown';
+
+      try {
+        await saveChecklist('opening', {
+          tasks: checked,
+          completed: allDone,
+          worker: worker,
+          timestamp: new Date().toISOString()
+        });
+        document.getElementById('message').innerHTML = `<p class="text-green-600 font-semibold">✓ Saved successfully!</p>`;
+        btn.textContent = 'Saved ✓';
+        setTimeout(() => { btn.textContent = 'Save Opening Checklist'; btn.disabled = false; }, 2000);
+      } catch (err) {
+        document.getElementById('message').innerHTML = `<p class="text-red-600">✗ Error: ${err.message}</p>`;
+        btn.textContent = 'Save Opening Checklist';
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
