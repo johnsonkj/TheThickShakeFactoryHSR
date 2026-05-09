@@ -13,6 +13,7 @@
     <header class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-pink-400">
       <h1 class="text-2xl font-bold text-gray-800">📦 Inventory Update</h1>
       <p class="text-sm text-gray-500" id="dateDisplay"></p>
+      <p class="text-xs text-amber-700 mt-1">Logged in as <span class="font-bold" id="workerLabel">…</span></p>
       <p class="text-xs text-gray-400 mt-2">Enter the current quantity for each item. Leave blank if unchanged.</p>
     </header>
 
@@ -32,6 +33,17 @@
   <script type="module">
     import { INVENTORY } from './inventory-data.js';
     import { saveInventory, getTodayInventory, getLatestInventory } from './app.js';
+
+    // ===== Auth gate =====
+    const _auth = JSON.parse(sessionStorage.getItem('tsf_auth') || '{}');
+    const AUTH_TTL_MS = 60 * 60 * 1000;
+    if (_auth.target !== 'inventory' || !_auth.worker || !_auth.at || Date.now() - _auth.at > AUTH_TTL_MS) {
+      alert('Please open this page from the home portal (authentication required).');
+      location.href = 'index.html';
+      throw new Error('not authenticated');
+    }
+    const worker = _auth.worker;
+    document.getElementById('workerLabel').textContent = worker.charAt(0).toUpperCase() + worker.slice(1);
 
     const today = new Date();
     document.getElementById('dateDisplay').textContent = today.toLocaleDateString('en-IN', {
@@ -142,8 +154,6 @@
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
       btn.textContent = 'Saving...';
-
-      const worker = prompt('Worker name (for record):') || 'Unknown';
 
       try {
         await saveInventory({

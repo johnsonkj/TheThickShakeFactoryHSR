@@ -120,6 +120,76 @@ export async function getTodayStatus() {
   };
 }
 
+// =============================================================================
+//  WORKER PASSWORDS  (config/worker_passwords)
+// =============================================================================
+
+export async function getWorkerPasswords() {
+  const ref = doc(db, "config", "worker_passwords");
+  const snap = await getDoc(ref);
+  return snap.exists() ? snap.data() : null;
+}
+
+export async function setWorkerPassword(worker, password) {
+  const ref = doc(db, "config", "worker_passwords");
+  await setDoc(ref, { [worker]: password }, { merge: true });
+}
+
+// =============================================================================
+//  ATTENDANCE  (attendance/{YYYY-MM-DD}_{worker})
+// =============================================================================
+
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+/**
+ * Append a check-in or check-out event for today.
+ * Throws on invalid sequencing (e.g. checking in twice in a row).
+ */
+export async function recordAttendanceEvent(worker, type) {
+  if (type !== 'in' && type !== 'out') throw new Error('Invalid event type');
+  const date = todayStr();
+  const ref = doc(db, "attendance", `${date}_${worker}`);
+  const snap = await getDoc(ref);
+  const existing = snap.exists() ? snap.data() : { date, worker, events: [] };
+  const events = Array.isArray(existing.events) ? existing.events.slice() : [];
+  const last = events[events.length - 1];
+
+  if (type === 'in' && last && last.type === 'in') {
+    throw new Error(`${cap(worker)} is already checked in.`);
+  }
+  if (type === 'out' && (!last || last.type === 'out')) {
+    throw new Error(`${cap(worker)} hasn't checked in yet.`);
+  }
+
+  events.push({ type, ts: new Date().toISOString() });
+  await setDoc(ref, { date, worker, events });
+}
+
+export async function getAttendanceForDate(date, worker) {
+  const ref = doc(db, "attendance", `${date}_${worker}`);
+  const snap = await getDoc(ref);
+  return snap.exists() ? snap.data() : null;
+}
+
+/**
+ * Get attendance for every day in YYYY-MM (worker scoped).
+ * Returns an array of { date, worker, events } for each day in the month.
+ */
+export async function getAttendanceForMonth(yyyymm, worker) {
+  const [y, m] = yyyymm.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const dates = [];
+  for (let d = 1; d <= lastDay; d++) {
+    dates.push(`${yyyymm}-${String(d).padStart(2, '0')}`);
+  }
+  const results = await Promise.all(dates.map(async date => {
+    const ref = doc(db, "attendance", `${date}_${worker}`);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : { date, worker, events: [] };
+  }));
+  return results;
+}
+
 /**
  * Get last N days of activity for the recent-activity table.
  */

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Attendance — The Shake Factory</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="bg-gradient-to-br from-amber-50 via-white to-orange-50 min-h-screen">
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <a href="index.html" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4">← Back to Home</a>
+
+    <header class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-amber-400">
+      <h1 class="text-2xl font-bold text-gray-800">🕒 Attendance</h1>
+      <p class="text-sm text-gray-500" id="dateDisplay"></p>
+      <p class="text-xs text-gray-400 mt-2">Each Check In / Check Out asks for your password — both workers can use the same device.</p>
+    </header>
+
+    <!-- Action buttons -->
+    <div class="grid grid-cols-2 gap-4 mb-6">
+      <button id="checkInBtn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-6 rounded-2xl shadow-md text-lg transition-all">
+        ✅ Check In
+      </button>
+      <button id="checkOutBtn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-6 rounded-2xl shadow-md text-lg transition-all">
+        🚪 Check Out
+      </button>
+    </div>
+
+    <div id="message" class="text-center mb-4 hidden text-sm font-semibold"></div>
+
+    <!-- Today activity for both workers -->
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="bg-white rounded-2xl p-6 shadow-md border-t-4 border-amber-300">
+        <h2 class="text-lg font-bold text-gray-800 mb-3">Surya</h2>
+        <div id="suryaEvents" class="text-sm">Loading…</div>
+        <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+          <span class="text-xs text-gray-500">Today's total</span>
+          <span class="font-bold text-amber-600 text-lg" id="suryaTotal">—</span>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-6 shadow-md border-t-4 border-amber-300">
+        <h2 class="text-lg font-bold text-gray-800 mb-3">Sushanth</h2>
+        <div id="sushanthEvents" class="text-sm">Loading…</div>
+        <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+          <span class="text-xs text-gray-500">Today's total</span>
+          <span class="font-bold text-amber-600 text-lg" id="sushanthTotal">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { recordAttendanceEvent, getAttendanceForDate } from './app.js';
+    import { requireWorkerAuth } from './auth-modal.js';
+    import { computeTotalMs, formatDuration, renderEventList } from './attendance-shared.js';
+
+    function todayStr() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dd}`;
+    }
+
+    const today = new Date();
+    document.getElementById('dateDisplay').textContent = today.toLocaleDateString('en-IN', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    function showMsg(text, ok = true) {
+      const m = document.getElementById('message');
+      m.textContent = text;
+      m.className = `text-center mb-4 text-sm font-semibold ${ok ? 'text-green-600' : 'text-red-600'}`;
+      m.classList.remove('hidden');
+      setTimeout(() => m.classList.add('hidden'), 4000);
+    }
+
+    async function loadActivity() {
+      const date = todayStr();
+      for (const worker of ['surya', 'sushanth']) {
+        try {
+          const data = await getAttendanceForDate(date, worker);
+          const events = (data && data.events) || [];
+          document.getElementById(`${worker}Events`).innerHTML = renderEventList(events);
+          document.getElementById(`${worker}Total`).textContent = formatDuration(computeTotalMs(events, true));
+        } catch (e) {
+          document.getElementById(`${worker}Events`).innerHTML = `<p class="text-red-500 text-xs">Load error: ${e.message}</p>`;
+        }
+      }
+    }
+
+    async function action(type, label) {
+      const auth = await requireWorkerAuth(label);
+      if (!auth) return;
+      try {
+        await recordAttendanceEvent(auth.worker, type);
+        const cap = auth.worker.charAt(0).toUpperCase() + auth.worker.slice(1);
+        showMsg(`✓ ${label} recorded for ${cap}`);
+        loadActivity();
+      } catch (e) {
+        showMsg(`✗ ${e.message}`, false);
+      }
+    }
+
+    document.getElementById('checkInBtn').addEventListener('click', () => action('in', 'Check In'));
+    document.getElementById('checkOutBtn').addEventListener('click', () => action('out', 'Check Out'));
+
+    loadActivity();
+    // Live tick: refresh every 60s so "currently in" totals keep updating
+    setInterval(loadActivity, 60000);
+  </script>
+</body>
+</html>
