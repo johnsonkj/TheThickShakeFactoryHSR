@@ -121,8 +121,22 @@
         <h2 class="text-lg font-bold text-gray-800">⚠️ Items Below Reorder Threshold</h2>
         <button id="exportBtn" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold">Export Order List (CSV)</button>
       </div>
-      <p class="text-xs text-gray-500 mb-4">Based on the most recent inventory entry.</p>
+      <p class="text-xs text-gray-500 mb-4">Based on the most recent inventory entry. Uses your minimums set below.</p>
       <div id="lowStockList" class="text-sm">Loading...</div>
+    </div>
+
+    <!-- Section: Minimum Quantity Levels (admin-editable thresholds) -->
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-orange-400">
+      <h2 class="text-lg font-bold text-gray-800 mb-2">📋 Minimum Quantity Levels</h2>
+      <p class="text-xs text-gray-500 mb-4">Set the minimum stock level for each item. Workers see a low-stock warning when their saved quantity is below this.</p>
+
+      <div class="flex flex-wrap gap-2 mb-4" id="thrTabs"></div>
+      <div id="thrContent" class="bg-gray-50 rounded-xl p-4 mb-4">Loading...</div>
+
+      <div class="flex items-center gap-3 flex-wrap">
+        <button id="thrSave" class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold">Save Changes (this tab)</button>
+        <span id="thrMsg" class="text-sm"></span>
+      </div>
     </div>
 
     <!-- Section: Full Inventory -->
@@ -143,7 +157,8 @@
     import {
       getChecklistByDate, getInventoryByDate, getLatestInventory, getRecentActivity,
       getWorkerPasswords, setWorkerPassword,
-      getAttendanceForDate, getAttendanceForMonth
+      getAttendanceForDate, getAttendanceForMonth,
+      getInventoryThresholds, setInventoryThresholdsBatch
     } from './app.js';
     import { INVENTORY } from './inventory-data.js';
     import { computeTotalMs, formatDuration, formatTime, buildSessions, renderEventList } from './attendance-shared.js';
@@ -184,7 +199,14 @@
       return d.toISOString().split('T')[0];
     }
 
-    function loadDashboard() {
+    // Threshold overrides loaded once at dashboard init; used by low-stock + snapshot.
+    let thresholdOverrides = {};
+    function effectiveThreshold(catKey, item) {
+      const key = `${catKey}/${item.name}`;
+      return key in thresholdOverrides ? thresholdOverrides[key] : item.threshold;
+    }
+
+    async function loadDashboard() {
       const datePicker = document.getElementById('datePicker');
       datePicker.value = todayStr();
       datePicker.addEventListener('change', () => loadForDate(datePicker.value));
@@ -192,11 +214,20 @@
         datePicker.value = todayStr();
         loadForDate(todayStr());
       });
+
+      // Load threshold overrides first so all rendering uses them.
+      try {
+        thresholdOverrides = (await getInventoryThresholds()) || {};
+      } catch (e) {
+        console.error('Threshold load failed:', e);
+      }
+
       loadForDate(todayStr());
       loadLowStock();
       loadRecent();
       initAttendance();
       initWorkerPasswords();
+      initThresholdEditor();
     }
 
     async function loadForDate(date) {
@@ -284,8 +315,9 @@
         });
 
         Object.entries(catData).forEach(([name, qty]) => {
-          const meta = itemMeta[name] || { unit: '', threshold: 0 };
-          const isLow = qty < meta.threshold;
+          const meta = itemMeta[name] || { unit: '', threshold: 0, name };
+          const min = effectiveThreshold(catKey, meta);
+          const isLow = qty < min;
           html += `<tr class="${isLow ? 'text-red-600 font-semibold' : 'text-gray-700'}">
             <td class="py-1">${name} ${isLow ? '⚠️' : ''}</td>
             <td class="py-1 text-right">${qty}</td>
@@ -318,8 +350,10 @@
           });
           Object.entries(catData).forEach(([name, qty]) => {
             const meta = itemMeta[name];
-            if (meta && qty < meta.threshold) {
-              lowItems.push({ category: cat.label, name, qty, threshold: meta.threshold, unit: meta.unit });
+            if (!meta) return;
+            const min = effectiveThreshold(catKey, meta);
+            if (qty < min) {
+              lowItems.push({ category: cat.label, name, qty, threshold: min, unit: meta.unit });
             }
           });
         });
@@ -517,6 +551,107 @@
       a.download = `attendance-${yyyymm}.csv`;
       a.click();
       URL.revokeObjectURL(url);
+    }
+
+    // ===== INVENTORY MINIMUM QUANTITY EDITOR =====
+    let thrActiveTab = Object.keys(INVENTORY)[0];
+    // pending edits live directly in `thresholdOverrides`; saved on Save Changes per tab
+
+    function initThresholdEditor() {
+      renderThrTabs();
+      renderThrContent();
+      document.getElementById('thrSave').addEventListener('click', saveThrTab);
+    }
+
+    function renderThrTabs() {
+      const tabsEl = document.getElementById('thrTabs');
+      tabsEl.innerHTML = '';
+      Object.entries(INVENTORY).forEach(([key, cat]) => {
+        const isActive = key === thrActiveTab;
+        const btn = document.createElement('button');
+        btn.className = isActive
+          ? 'px-4 py-2 rounded-lg font-semibold text-sm bg-orange-500 text-white shadow-md'
+          : 'px-4 py-2 rounded-lg font-semibold text-sm bg-white text-gray-600 hover:bg-gray-100 shadow-sm border border-gray-200';
+        btn.innerHTML = `${cat.icon} ${cat.label}`;
+        btn.addEventListener('click', () => {
+          thrActiveTab = key;
+          renderThrTabs();
+          renderThrContent();
+          document.getElementById('thrMsg').textContent = '';
+        });
+        tabsEl.appendChild(btn);
+      });
+    }
+
+    function renderThrContent() {
+      const content = document.getElementById('thrContent');
+      const cat = INVENTORY[thrActiveTab];
+      let html = '';
+      Object.entries(cat.sections).forEach(([sectionName, items]) => {
+        html += `<div class="mb-4">
+          <h3 class="text-sm font-bold text-orange-600 uppercase tracking-wider mb-2 pb-1 border-b border-orange-100">${sectionName}</h3>
+          <div class="grid sm:grid-cols-2 gap-2">`;
+        items.forEach(item => {
+          const key = `${thrActiveTab}/${item.name}`;
+          const current = key in thresholdOverrides ? thresholdOverrides[key] : item.threshold;
+          const isOverridden = key in thresholdOverrides;
+          html += `
+            <div class="flex items-center gap-2 p-2 hover:bg-orange-50 rounded-lg">
+              <label class="flex-1 text-sm text-gray-700">${item.name}${isOverridden ? '' : ' <span class="text-xs text-gray-400">(default)</span>'}</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value="${current}"
+                data-thrkey="${key}"
+                class="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:border-orange-400 focus:outline-none"
+              />
+              <span class="text-xs text-gray-400 w-12">${item.unit}</span>
+            </div>
+          `;
+        });
+        html += `</div></div>`;
+      });
+      content.innerHTML = html;
+
+      content.querySelectorAll('input[data-thrkey]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const v = inp.value.trim();
+          if (v === '') return;
+          const num = parseFloat(v);
+          if (!Number.isFinite(num) || num < 0) return;
+          thresholdOverrides[inp.dataset.thrkey] = num;
+        });
+      });
+    }
+
+    async function saveThrTab() {
+      const cat = INVENTORY[thrActiveTab];
+      const updates = {};
+      Object.values(cat.sections).flat().forEach(item => {
+        const key = `${thrActiveTab}/${item.name}`;
+        if (key in thresholdOverrides) updates[key] = thresholdOverrides[key];
+      });
+
+      const btn = document.getElementById('thrSave');
+      const msg = document.getElementById('thrMsg');
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'Saving…';
+      try {
+        await setInventoryThresholdsBatch(updates);
+        msg.textContent = `✓ Saved ${Object.keys(updates).length} item${Object.keys(updates).length === 1 ? '' : 's'} for ${cat.label}.`;
+        msg.className = 'text-sm text-green-600';
+        // Refresh the dashboard low-stock list since thresholds may have changed.
+        loadLowStock();
+      } catch (e) {
+        msg.textContent = `✗ ${e.message}`;
+        msg.className = 'text-sm text-red-600';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+        setTimeout(() => { if (msg.textContent.startsWith('✓')) msg.textContent = ''; }, 4000);
+      }
     }
 
     // ===== WORKER PASSWORDS =====
