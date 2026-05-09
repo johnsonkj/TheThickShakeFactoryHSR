@@ -1,41 +1,33 @@
-# The Shake Factory — Shop Portal
+# The Shake Factory — Setup Guide
 
-A simple internal website for shop workers to fill the opening checklist, closing checklist, and inventory updates. The owner sees a private dashboard with reports and low-stock alerts.
+First-time setup steps. After this is done you should never need to revisit this file. Day-to-day use and feature reference live in [README.md](README.md).
 
-**Stack:** Plain HTML + Tailwind + Vanilla JS + Firebase Firestore. Hosted on GitHub Pages. Zero monthly cost.
-
----
-
-## 📁 Project Files
-
-| File | Purpose |
-|------|---------|
-| `index.html` | Worker home page — links to checklists & inventory |
-| `opening.html` | Opening checklist (21 tasks) |
-| `closing.html` | Closing checklist (7 tasks) |
-| `inventory.html` | Inventory update with 4 category tabs |
-| `owner.html` | Owner dashboard (password-protected) |
-| `firebase-config.js` | **YOU EDIT THIS** — Firebase keys + owner password |
-| `app.js` | Database functions (don't need to edit) |
-| `inventory-data.js` | All inventory items + reorder thresholds (edit to add/remove items) |
-| `styles.css` | Minor styling |
+**Stack:** Plain HTML + Tailwind + Vanilla JS + Firebase Firestore. Hosted on GitHub Pages. No build step.
 
 ---
 
-## 🚀 SETUP — Do This Once
+## 🔑 Account credentials
 
-### Step 1: Create a Firebase project (free)
+The Firebase project (**TTSF-HSR-Tracker**) and the GitHub repository are both under the **TTSF shop Gmail account**. To access either, sign in with that account.
 
-1. Go to **https://console.firebase.google.com**
+> The actual email and password are not stored in this repo (it's public). Keep them in a private note.
+
+---
+
+## 🚀 PART 1 — Firebase setup (one-time)
+
+### Step 1: Create a Firebase project
+
+1. Go to [https://console.firebase.google.com](https://console.firebase.google.com)
 2. Sign in with your shop Gmail account
-3. Click **"Add project"** → name it `shake-factory` → click Continue
-4. Disable Google Analytics (you don't need it) → Create project
+3. Click **"Add project"** → name it `shake-factory` (or anything) → Continue
+4. Disable Google Analytics → Create project
 
-### Step 2: Add a Web App to Firebase
+### Step 2: Add a Web App
 
-1. On the Firebase project home page, click the **`</>`** icon ("Add app — Web")
-2. Give it a nickname like `shake-factory-web` → click Register App
-3. **Firebase will show you a `firebaseConfig` object — copy it.** It looks like:
+1. On the project home page, click the **`</>`** icon ("Add app — Web")
+2. Nickname it `shake-factory-web` → Register App
+3. Firebase shows a `firebaseConfig` object. **Copy these values** — you'll paste them into `firebase-config.js` next:
    ```js
    const firebaseConfig = {
      apiKey: "AIzaSy...",
@@ -50,11 +42,9 @@ A simple internal website for shop workers to fill the opening checklist, closin
 
 ### Step 3: Enable Firestore Database
 
-1. In the Firebase console left menu: **Build → Firestore Database**
-2. Click **"Create database"**
-3. Choose **"Start in production mode"** → click Next
-4. Choose location: **`asia-south1` (Mumbai)** — closest to Bangalore → Enable
-5. Once created, go to the **"Rules"** tab. Replace the rules with:
+1. Left menu: **Build → Firestore Database**
+2. **Create database** → "Start in production mode" → location **`asia-south1` (Mumbai)** → Enable
+3. Go to the **Rules** tab. Replace with:
    ```
    rules_version = '2';
    service cloud.firestore {
@@ -65,13 +55,13 @@ A simple internal website for shop workers to fill the opening checklist, closin
      }
    }
    ```
-6. Click **Publish**.
+4. Click **Publish**
 
-> **Note on security:** these rules let anyone with the URL read and write data. That's fine for a low-stakes internal tool with a non-public URL — but if you want me to add stricter rules later (e.g., only allow writes from known devices), just ask.
+> **Security note:** these rules let anyone with the URL read/write data. Acceptable for a low-stakes internal tool with a non-public URL. Tighten later (e.g., Firebase Auth) if you need to.
 
 ### Step 4: Edit `firebase-config.js`
 
-Open `firebase-config.js` in any text editor (or directly on GitHub). Paste in the values you copied from Step 2:
+Open `firebase-config.js` and paste in your values from Step 2:
 
 ```js
 export const firebaseConfig = {
@@ -86,117 +76,87 @@ export const firebaseConfig = {
 export const OWNER_PASSWORD = "shakefactory2026";  // ← change this!
 ```
 
-**Change `OWNER_PASSWORD`** to something only you know.
+**Change `OWNER_PASSWORD`** to something only you know. (This is the password for `owner.html`, separate from the worker passwords you'll set later.)
 
 ---
 
-## 🌐 HOSTING ON GITHUB PAGES
+## 🌐 PART 2 — Hosting on GitHub Pages
 
-### Step 5: Create a GitHub repo
+### Step 5: Push to GitHub
 
-1. Go to **https://github.com/new**
-2. Repository name: `shake-factory` (or whatever)
-3. Set it to **Public** (Pages is free for public repos)
-4. Click **Create repository**
+If the code isn't already in a public GitHub repo, create one and push the files.
 
-### Step 6: Upload all files
-
-**Easiest way (browser):**
-1. On the new empty repo page, click **"uploading an existing file"**
-2. Drag all 9 files (the `.html`, `.js`, `.css`, `.md` files) into the upload area
-3. Scroll down → click **Commit changes**
-
-**Or via Git CLI (if you know it):**
 ```bash
-git clone https://github.com/YOUR_USERNAME/shake-factory.git
-cd shake-factory
-# copy all files into this folder
+git init
+git remote add origin https://github.com/YOUR_USERNAME/TheThickShakeFactoryHSR.git
 git add .
 git commit -m "Initial commit"
-git push
+git push -u origin main
 ```
 
-### Step 7: Enable GitHub Pages
+The repo must be **public** for GitHub Pages on the free tier.
 
-1. In your repo on GitHub, click **Settings** (top tab)
-2. Left sidebar → click **Pages**
-3. Under "Build and deployment" → Source → select **Deploy from a branch**
-4. Branch → select **`main`** → folder **`/ (root)`** → click **Save**
-5. Wait ~1 minute. Refresh the page. You'll see:
-   > *Your site is live at* `https://YOUR_USERNAME.github.io/shake-factory/`
+### Step 6: Enable GitHub Pages
 
-That's your shop's website URL. 🎉
+1. Repo → **Settings** → left sidebar **Pages**
+2. **Source** → "Deploy from a branch" → branch **`main`**, folder **`/ (root)`** → **Save**
+3. Wait ~1 minute. The page shows:
+   > *Your site is live at* `https://YOUR_USERNAME.github.io/TheThickShakeFactoryHSR/`
 
----
-
-## 👷 DAILY USE
-
-### For workers:
-- Bookmark `https://YOUR_USERNAME.github.io/shake-factory/` on the shop laptop browser
-- Three buttons: Opening / Closing / Inventory
-- Tick boxes / fill quantities → click Save
-- They will be asked for their name when saving (so you know who submitted what)
-
-### For you (owner):
-- Go to `https://YOUR_USERNAME.github.io/shake-factory/owner.html`
-- Enter your password
-- See:
-  - Today's checklist completion
-  - Low-stock items (auto-flagged from latest inventory)
-  - Full inventory snapshot
-  - Last 14 days activity table
-  - Export low-stock list as CSV (to copy into orders)
+That's your shop's portal URL. 🎉
 
 ---
 
-## 🔧 COMMON TASKS
+## ⚙️ PART 3 — First-run admin tasks
 
-### Change the owner password
-Edit `firebase-config.js`, change the `OWNER_PASSWORD` value, commit. Live in ~1 min.
+Workers can't use most cards until you do these. Open `https://YOUR_USERNAME.github.io/TheThickShakeFactoryHSR/owner.html` and log in with `OWNER_PASSWORD`.
 
-### Add or remove inventory items
-Edit `inventory-data.js`. Each item is one line — copy the format. Adjust `threshold` values to control when the dashboard flags items as "low stock".
+### Step 7: Set worker passwords
 
-### Change a checklist task
-Edit the `tasks` array at the top of `<script>` in `opening.html` or `closing.html`.
+Scroll to **🔑 Worker Passwords**:
+- Pick **Surya** → enter a password → Save
+- Pick **Sushanth** → enter a password → Save
 
-### Look at raw data
-Firebase Console → your project → Firestore Database → you'll see collections:
-- `checklists_opening` — one document per date
-- `checklists_closing` — one document per date
-- `inventory` — one document per date
+The status line at the top shows which workers have passwords set.
 
-### Hide owner.html from search engines (optional)
-Workers won't easily find it, but to be safer create a file `robots.txt`:
-```
-User-agent: *
-Disallow: /owner.html
-```
+### Step 8: Set bonus configuration (optional, for incentive feature)
 
----
+Scroll to **🎁 Bonus Configuration**:
+- Set **Bonus % of sales** (e.g. `5`)
+- **Add** sections (e.g. `Sundae`, `Waffles`)
+- **Save Configuration**
 
-## 💰 COSTS
+Workers will now see those sections in the closing checklist.
 
-**Zero.** Free tier limits (you'll never hit these):
-- Firebase Firestore free: 1 GB storage, 50K reads/day, 20K writes/day
-- GitHub Pages free: 100 GB bandwidth/month
-- One shop, ~5 submissions/day = ~150/month. Practically rounding error against the limits.
+### Step 9: Tune inventory minimums (optional)
+
+Scroll to **📋 Minimum Quantity Levels**. Each item shows a default value (from `inventory-data.js`) labelled "(default)". Edit any you want to change → **Save Changes (this tab)** for that category. Tabs save independently.
 
 ---
 
-## 🆘 TROUBLESHOOTING
+## 👷 PART 4 — Tell the workers
 
-**Site loads but Save buttons fail with an error**
-→ You haven't pasted the Firebase config into `firebase-config.js`, or Firestore rules aren't published. Re-check Steps 3 and 4.
+Bookmark `https://YOUR_USERNAME.github.io/TheThickShakeFactoryHSR/` on the shop device.
 
-**Owner login shows "Incorrect password"**
-→ Check `OWNER_PASSWORD` in `firebase-config.js`. Case-sensitive.
+What they need to know:
+- Five cards on the home page: **Attendance**, **Opening**, **Closing**, **Inventory**, **Walk-in Sales**.
+- Tapping any card prompts for a worker password (dropdown + password). For Attendance, the prompt is per Check In / Check Out so both workers can share the device.
+- All saves auto-stamp the worker who authenticated — no name typing.
+- The 🎉 banner on home shows month-to-date incentive per worker.
 
-**Site doesn't load at all**
-→ GitHub Pages takes 1–2 mins after first publish. Refresh. Make sure you committed all files.
+---
 
-**Worker accidentally clicks "Owner" link**
-→ They can't get past the login screen. The URL is also unlisted from the home page (only a tiny dot at the bottom). You can remove that link entirely if you want — delete the `<a href="owner.html">·</a>` line from `index.html`.
+## 💰 Costs
 
-**I want to download / export all my data**
-→ Firebase Console → Firestore → use the export feature, or I can give you a small script. Ask anytime.
+**Zero.** Free-tier ceilings (you'll never hit these):
+- Firebase Firestore: 1 GB storage, 50K reads/day, 20K writes/day
+- GitHub Pages: 100 GB bandwidth/month
+
+---
+
+## 🆘 If something doesn't work
+
+See the Troubleshooting section in [README.md](README.md). The two most common first-run issues:
+
+1. **Save fails with a permission error** → Firestore rules aren't published (Step 3).
+2. **Workers can't open any card** → worker passwords haven't been set (Step 7).
