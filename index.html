@@ -19,22 +19,29 @@
     </header>
 
     <!-- Action Cards -->
-    <div class="grid md:grid-cols-3 gap-6 mb-10">
-      <a href="opening.html" class="group block bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-green-400">
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+      <a href="attendance.html" data-card="attendance" class="group block bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-amber-400">
+        <div class="text-5xl mb-4">🕒</div>
+        <h2 class="text-xl font-bold text-gray-800 mb-2">Attendance</h2>
+        <p class="text-sm text-gray-500">Check in / check out for the day</p>
+        <div class="mt-4 text-amber-600 font-semibold group-hover:underline">Open →</div>
+      </a>
+
+      <a href="opening.html" data-card="opening" class="group block bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-green-400">
         <div class="text-5xl mb-4">🌅</div>
         <h2 class="text-xl font-bold text-gray-800 mb-2">Opening Checklist</h2>
         <p class="text-sm text-gray-500">Tasks to do when opening the shop</p>
         <div class="mt-4 text-green-600 font-semibold group-hover:underline">Open →</div>
       </a>
 
-      <a href="closing.html" class="group block bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-blue-400">
+      <a href="closing.html" data-card="closing" class="group block bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-blue-400">
         <div class="text-5xl mb-4">🌙</div>
         <h2 class="text-xl font-bold text-gray-800 mb-2">Closing Checklist</h2>
         <p class="text-sm text-gray-500">Tasks to do when closing the shop</p>
         <div class="mt-4 text-blue-600 font-semibold group-hover:underline">Open →</div>
       </a>
 
-      <a href="inventory.html" class="group block bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-pink-400">
+      <a href="inventory.html" data-card="inventory" class="group block bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-pink-400">
         <div class="text-5xl mb-4">📦</div>
         <h2 class="text-xl font-bold text-gray-800 mb-2">Inventory Update</h2>
         <p class="text-sm text-gray-500">Update current stock quantities</p>
@@ -75,9 +82,34 @@
   <script type="module" src="app.js"></script>
   <script type="module">
     import { getTodayStatus } from './app.js';
+    import { requireWorkerAuth } from './auth-modal.js';
+
     const today = new Date();
     document.getElementById('todayDate').textContent = today.toLocaleDateString('en-IN', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    // Card click interception: gate Opening / Closing / Inventory behind worker auth.
+    // Attendance is left ungated — its action buttons are individually authenticated.
+    const cardLabels = {
+      opening: 'Open Opening Checklist',
+      closing: 'Open Closing Checklist',
+      inventory: 'Open Inventory Update'
+    };
+    document.querySelectorAll('a[data-card]').forEach(card => {
+      const target = card.dataset.card;
+      if (target === 'attendance') return; // pass through
+      card.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const auth = await requireWorkerAuth(cardLabels[target] || 'Continue');
+        if (!auth) return;
+        sessionStorage.setItem('tsf_auth', JSON.stringify({
+          worker: auth.worker,
+          target,
+          at: Date.now()
+        }));
+        location.href = card.getAttribute('href');
+      });
     });
 
     // Load today's status

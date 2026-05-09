@@ -49,6 +49,53 @@
       <button id="todayBtn" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm">Today</button>
     </div>
 
+    <!-- Section: Worker passwords -->
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-purple-400">
+      <h2 class="text-lg font-bold text-gray-800 mb-2">🔑 Worker Passwords</h2>
+      <p class="text-xs text-gray-500 mb-4">Set or change worker passwords. Stored in Firestore — change anytime, takes effect immediately.</p>
+      <div class="flex flex-wrap gap-3 items-end">
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">Worker</label>
+          <select id="pwWorker" class="px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-400 focus:outline-none">
+            <option value="surya">Surya</option>
+            <option value="sushanth">Sushanth</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[200px]">
+          <label class="block text-xs text-gray-600 mb-1">New password</label>
+          <input id="pwInput" type="text" autocomplete="off" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-400 focus:outline-none" />
+        </div>
+        <button id="pwSave" class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-semibold">Save</button>
+      </div>
+      <p id="pwStatus" class="text-xs text-gray-500 mt-3"></p>
+      <p id="pwMsg" class="text-sm mt-2 hidden"></p>
+    </div>
+
+    <!-- Section: Attendance -->
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-amber-400">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
+        <h2 class="text-lg font-bold text-gray-800">🕒 Attendance</h2>
+        <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
+          <button id="attDailyBtn" class="px-3 py-1 rounded-md text-sm font-semibold bg-white text-amber-600 shadow-sm">Daily</button>
+          <button id="attMonthlyBtn" class="px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800">Monthly</button>
+        </div>
+      </div>
+
+      <div id="attDaily">
+        <p class="text-xs text-gray-500 mb-3">For the date selected above. Live ticking total for ongoing sessions.</p>
+        <div class="grid md:grid-cols-2 gap-4" id="attDailyContent">Loading…</div>
+      </div>
+
+      <div id="attMonthly" class="hidden">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <label class="text-sm text-gray-700 font-semibold">Month:</label>
+          <input id="monthPicker" type="month" class="px-3 py-2 border border-gray-300 rounded-lg focus:border-amber-400 focus:outline-none" />
+          <button id="monthExportBtn" class="ml-auto px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold">Export CSV</button>
+        </div>
+        <div id="attMonthlyContent">Pick a month to view.</div>
+      </div>
+    </div>
+
     <!-- Section: Today's checklists -->
     <div class="grid md:grid-cols-2 gap-6 mb-6">
       <div class="bg-white rounded-2xl p-6 shadow-md border-l-4 border-green-400">
@@ -93,8 +140,13 @@
 
   <script type="module">
     import { OWNER_PASSWORD } from './firebase-config.js';
-    import { getChecklistByDate, getInventoryByDate, getLatestInventory, getRecentActivity } from './app.js';
+    import {
+      getChecklistByDate, getInventoryByDate, getLatestInventory, getRecentActivity,
+      getWorkerPasswords, setWorkerPassword,
+      getAttendanceForDate, getAttendanceForMonth
+    } from './app.js';
     import { INVENTORY } from './inventory-data.js';
+    import { computeTotalMs, formatDuration, formatTime, buildSessions, renderEventList } from './attendance-shared.js';
 
     // ===== LOGIN =====
     const sessionKey = 'tsf_owner_session';
@@ -143,6 +195,8 @@
       loadForDate(todayStr());
       loadLowStock();
       loadRecent();
+      initAttendance();
+      initWorkerPasswords();
     }
 
     async function loadForDate(date) {
@@ -163,6 +217,9 @@
         const inv = await getInventoryByDate(date);
         renderInventory(inv);
       } catch (e) { renderInventory(null); }
+
+      // Attendance (daily) — driven by the same date picker
+      loadAttendanceDaily(date);
     }
 
     function renderChecklist(type, data, total) {
@@ -312,6 +369,201 @@
       a.click();
       URL.revokeObjectURL(url);
     });
+
+    // ===== ATTENDANCE =====
+    const WORKERS = [
+      { id: 'surya', label: 'Surya' },
+      { id: 'sushanth', label: 'Sushanth' },
+    ];
+
+    function initAttendance() {
+      // Tabs
+      const dailyBtn = document.getElementById('attDailyBtn');
+      const monthlyBtn = document.getElementById('attMonthlyBtn');
+      const dailyPanel = document.getElementById('attDaily');
+      const monthlyPanel = document.getElementById('attMonthly');
+
+      function activate(which) {
+        if (which === 'daily') {
+          dailyPanel.classList.remove('hidden');
+          monthlyPanel.classList.add('hidden');
+          dailyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold bg-white text-amber-600 shadow-sm';
+          monthlyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800';
+        } else {
+          dailyPanel.classList.add('hidden');
+          monthlyPanel.classList.remove('hidden');
+          monthlyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold bg-white text-amber-600 shadow-sm';
+          dailyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800';
+        }
+      }
+      dailyBtn.addEventListener('click', () => activate('daily'));
+      monthlyBtn.addEventListener('click', () => activate('monthly'));
+
+      // Default month picker = current month
+      const monthPicker = document.getElementById('monthPicker');
+      const now = new Date();
+      const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      monthPicker.value = ym;
+      monthPicker.addEventListener('change', () => loadAttendanceMonthly(monthPicker.value));
+      document.getElementById('monthExportBtn').addEventListener('click', () => exportAttendanceMonth(monthPicker.value));
+
+      loadAttendanceMonthly(ym);
+    }
+
+    async function loadAttendanceDaily(date) {
+      const container = document.getElementById('attDailyContent');
+      const isToday = date === todayStr();
+      try {
+        const results = await Promise.all(WORKERS.map(w => getAttendanceForDate(date, w.id)));
+        let html = '';
+        WORKERS.forEach((w, i) => {
+          const data = results[i];
+          const events = (data && data.events) || [];
+          const totalMs = computeTotalMs(events, isToday);
+          html += `
+            <div class="bg-amber-50 rounded-xl p-4 border border-amber-100">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold text-gray-800">${w.label}</h3>
+                <span class="text-amber-700 font-bold">${formatDuration(totalMs)}</span>
+              </div>
+              <div class="text-sm text-gray-700">${renderEventList(events)}</div>
+            </div>
+          `;
+        });
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Error: ${e.message}</p>`;
+      }
+    }
+
+    let lastMonthlyData = null; // for CSV export
+
+    async function loadAttendanceMonthly(yyyymm) {
+      const container = document.getElementById('attMonthlyContent');
+      container.innerHTML = '<p class="text-sm text-gray-500">Loading…</p>';
+      try {
+        const todayDate = todayStr();
+        const perWorker = await Promise.all(WORKERS.map(w => getAttendanceForMonth(yyyymm, w.id)));
+        lastMonthlyData = { yyyymm, workers: WORKERS.map((w, i) => ({ ...w, days: perWorker[i] })) };
+
+        let html = '';
+        WORKERS.forEach((w, idx) => {
+          const days = perWorker[idx].filter(d => (d.events || []).length > 0);
+          let monthTotalMs = 0;
+          days.forEach(d => { monthTotalMs += computeTotalMs(d.events, d.date === todayDate); });
+
+          html += `
+            <div class="mb-6">
+              <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <h3 class="text-base font-bold text-gray-800">${w.label}</h3>
+                <span class="text-sm text-amber-700 font-bold">Month total: ${formatDuration(monthTotalMs)}</span>
+              </div>
+              ${days.length === 0
+                ? '<p class="text-sm text-gray-400 italic">No attendance recorded.</p>'
+                : `<table class="w-full text-sm">
+                    <thead><tr class="text-left text-gray-500 border-b">
+                      <th class="py-2">Date</th>
+                      <th class="py-2">Sessions</th>
+                      <th class="py-2 text-right">Hours</th>
+                    </tr></thead>
+                    <tbody>
+                      ${days.map(d => {
+                        const sessions = buildSessions(d.events, d.date === todayDate);
+                        const sessText = sessions.map(s =>
+                          `${formatTime(s.in)}→${s.out ? formatTime(s.out) : (s.ongoing ? 'now' : '?')}`
+                        ).join(', ');
+                        const dur = formatDuration(computeTotalMs(d.events, d.date === todayDate));
+                        return `<tr class="border-b border-gray-50">
+                          <td class="py-2 font-semibold">${d.date}</td>
+                          <td class="py-2 text-gray-600 text-xs">${sessText}</td>
+                          <td class="py-2 text-right font-semibold">${dur}</td>
+                        </tr>`;
+                      }).join('')}
+                    </tbody>
+                  </table>`
+              }
+            </div>
+          `;
+        });
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Error: ${e.message}</p>`;
+      }
+    }
+
+    function exportAttendanceMonth(yyyymm) {
+      if (!lastMonthlyData || lastMonthlyData.yyyymm !== yyyymm) {
+        alert('Load the month first.');
+        return;
+      }
+      let csv = 'Worker,Date,Sessions,Hours\n';
+      const todayDate = todayStr();
+      lastMonthlyData.workers.forEach(w => {
+        w.days.forEach(d => {
+          const events = d.events || [];
+          if (events.length === 0) return;
+          const sessions = buildSessions(events, d.date === todayDate);
+          const sess = sessions.map(s =>
+            `${formatTime(s.in)}-${s.out ? formatTime(s.out) : (s.ongoing ? 'now' : 'unknown')}`
+          ).join('; ');
+          const dur = formatDuration(computeTotalMs(events, d.date === todayDate));
+          csv += `"${w.label}","${d.date}","${sess}","${dur}"\n`;
+        });
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attendance-${yyyymm}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ===== WORKER PASSWORDS =====
+    async function initWorkerPasswords() {
+      const status = document.getElementById('pwStatus');
+      try {
+        const pws = await getWorkerPasswords();
+        if (!pws) {
+          status.innerHTML = '<span class="text-red-600">⚠ Worker passwords not set yet — workers can\'t check in or open cards until you set them.</span>';
+        } else {
+          const set = WORKERS.filter(w => pws[w.id]).map(w => w.label).join(', ') || 'none';
+          const missing = WORKERS.filter(w => !pws[w.id]).map(w => w.label);
+          status.innerHTML = `Set for: <span class="font-semibold">${set}</span>` +
+            (missing.length ? ` &nbsp; <span class="text-red-600">Missing: ${missing.join(', ')}</span>` : '');
+        }
+      } catch (e) {
+        status.innerHTML = `<span class="text-red-500">Status load error: ${e.message}</span>`;
+      }
+
+      const saveBtn = document.getElementById('pwSave');
+      const msg = document.getElementById('pwMsg');
+      saveBtn.addEventListener('click', async () => {
+        const worker = document.getElementById('pwWorker').value;
+        const pw = document.getElementById('pwInput').value.trim();
+        if (!pw) {
+          msg.textContent = 'Enter a password.';
+          msg.className = 'text-sm mt-2 text-red-600';
+          return;
+        }
+        saveBtn.disabled = true;
+        const orig = saveBtn.textContent;
+        saveBtn.textContent = 'Saving…';
+        try {
+          await setWorkerPassword(worker, pw);
+          document.getElementById('pwInput').value = '';
+          msg.textContent = `✓ Password updated for ${worker.charAt(0).toUpperCase() + worker.slice(1)}.`;
+          msg.className = 'text-sm mt-2 text-green-600';
+          initWorkerPasswords(); // refresh status line
+        } catch (e) {
+          msg.textContent = `✗ ${e.message}`;
+          msg.className = 'text-sm mt-2 text-red-600';
+        } finally {
+          saveBtn.disabled = false;
+          saveBtn.textContent = orig;
+        }
+      });
+    }
 
     async function loadRecent() {
       const el = document.getElementById('recentActivity');
