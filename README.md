@@ -1,183 +1,137 @@
 # The Shake Factory — Shop Portal
 
-A simple internal website for shop workers to fill the opening checklist, closing checklist, and inventory updates. The owner sees a private dashboard with reports and low-stock alerts.
+Internal portal for the shop. Workers handle attendance, opening/closing checklists, inventory, walk-in sales, and bonus sales tracking. The owner sees daily and monthly reports, sets minimum stock levels, manages bonus rules, and reconciles cash.
 
-**Stack:** Plain HTML + Tailwind + Vanilla JS + Firebase Firestore. Hosted on GitHub Pages. Zero monthly cost.
+**Stack:** Plain HTML + Tailwind (CDN) + Vanilla JS modules + Firebase Firestore. Hosted on GitHub Pages. No build step. **Zero monthly cost.**
 
----
-
-## 🔑 Account Credentials
-
-The Firebase project (**TTSF-HSR-Tracker**) is registered under the **TTSF shop Gmail account**. To log in to the Firebase console, view stored data, or change anything in Firebase, sign in to [console.firebase.google.com](https://console.firebase.google.com) using the TTSF shop Gmail credentials.
-
-The GitHub repository hosting this site is also managed via the same TTSF shop Gmail account.
-
-> The actual email address and password are not stored in this file (this repo is public). They are kept separately in a private note.
+> First-time setup (Firebase project, GitHub Pages, owner & worker passwords) lives in [SETUP-GUIDE.md](SETUP-GUIDE.md). Read this README to understand what's in the repo and how to use it day-to-day.
 
 ---
 
-## 📁 Project Files
+## ✨ What the portal does
+
+### Worker side (the home page has 5 cards)
+
+| Card | What it does |
+|---|---|
+| 🕒 **Attendance** | Workers check in / check out as many times per day as needed. Each click asks for the worker's password (so two workers can share the same device). Live ticking total per worker for today. |
+| 🌅 **Opening Checklist** | 21 opening tasks + a cash counter (denominations 500, 200, 100, 50, 20, 10, 5, 2, 1) with auto-calculated total. |
+| 🌙 **Closing Checklist** | 7 closing tasks + bonus-section sales entry (qty + amount per category) + closing cash counter. Live "Today's incentive ₹X each" tile while typing. |
+| 📦 **Inventory Update** | Tabbed by category. On Save, a low-stock dialog appears for any item below its admin-set minimum (Cancel & Edit / Save Anyway). |
+| 💵 **Walk-in Sales** | Log each customer's bill: bill no (globally unique), amount (₹), UPI/Cash, recorded by. Live UPI/Cash/Total tiles; today's entries with delete buttons. |
+
+A 🎉 banner at the top of the home page shows month-to-date incentive **per worker**.
+
+### Admin side (`owner.html`, password-gated)
+
+- 🔑 **Worker Passwords** — set or change Surya's and Sushanth's passwords (stored in Firestore, not in code).
+- 🕒 **Attendance** — daily view (driven by date picker) and monthly view with CSV export.
+- 🎁 **Bonus Configuration** — set the bonus % and the list of sections (Sundae, Waffles, …) workers fill in closing.
+- 💰 **Bonus Incentive** — daily breakdown + monthly table with per-section amounts, day incentive, per-worker share, running total, CSV export.
+- 💵 **Walk-in Sales** — daily / monthly views with UPI/Cash/Total tiles, per-day breakdown, all-bills detail, CSV export, admin-side delete.
+- 💵 **Cash** — opening / closing / difference per day; monthly totals + per-day table + CSV export.
+- ⚠️ **Items Below Reorder Threshold** — auto-flagged from the latest inventory using the admin-set minimums.
+- 📋 **Minimum Quantity Levels** — admin sets per-item minimums (tabbed by category). Falls back to the file default if not yet set.
+- 📦 **Inventory Snapshot** — full saved inventory for the selected date.
+- ✅ **Today's checklists** — opening & closing status + incomplete-tasks summary.
+- 📅 **Last 14 days activity** — at-a-glance grid of opening / closing / inventory submissions.
+
+---
+
+## 🔐 Authentication model
+
+- **Owner** logs in with `OWNER_PASSWORD` from `firebase-config.js` (kept in the code; this repo is public, so don't reuse this password elsewhere).
+- **Workers** authenticate per card click with a username dropdown (Surya / Sushanth) + password. Worker passwords live in Firestore (`config/worker_passwords`) and are managed from the owner dashboard.
+- **Attendance** is the one exception: each Check In / Check Out asks for a password individually, so both workers can share a device without logging in/out.
+- **Walk-in Sales** asks for password once on card open; on the page itself a "Recorded by" dropdown attributes each entry without a re-prompt.
+- Auth tokens for opening / closing / inventory / walk-in pages live in `sessionStorage` and expire after **60 minutes**.
+
+---
+
+## 📁 Project files
 
 | File | Purpose |
 |------|---------|
-| `index.html` | Worker home page — links to checklists & inventory |
-| `opening.html` | Opening checklist (21 tasks) |
-| `closing.html` | Closing checklist (7 tasks) |
-| `inventory.html` | Inventory update with 4 category tabs |
+| `index.html` | Worker home — 5 cards + month-to-date incentive banner |
+| `attendance.html` | Worker attendance: per-action Check In / Check Out |
+| `opening.html` | Opening checklist (21 tasks + cash counter) |
+| `closing.html` | Closing checklist (7 tasks + bonus sales + cash counter) |
+| `inventory.html` | Inventory entry, tabbed by category, low-stock dialog on save |
+| `walkin.html` | Walk-in sales entry & today's listing |
 | `owner.html` | Owner dashboard (password-protected) |
 | `firebase-config.js` | **YOU EDIT THIS** — Firebase keys + owner password |
-| `app.js` | Database functions (don't need to edit) |
-| `inventory-data.js` | All inventory items + reorder thresholds (edit to add/remove items) |
-| `styles.css` | Minor styling |
+| `app.js` | Firestore helpers (checklists, attendance, inventory, walk-in, bonus, etc.) |
+| `auth-modal.js` | Shared password modal for card auth |
+| `attendance-shared.js` | Pure helpers for attendance (duration math, sessions) |
+| `cash-shared.js` | Denominations list + reusable cash counter widget |
+| `inventory-data.js` | Master item list + default reorder thresholds. Edit to add/remove items. |
+| `styles.css` | Minor custom styling |
+| `SETUP-GUIDE.md` | First-time Firebase + hosting setup |
 
 ---
 
-## 🚀 SETUP — Do This Once
+## 🗄 Firestore data model
 
-### Step 1: Create a Firebase project (free)
+Collections used by the portal:
 
-1. Go to **https://console.firebase.google.com**
-2. Sign in with your shop Gmail account
-3. Click **"Add project"** → name it `shake-factory` → click Continue
-4. Disable Google Analytics (you don't need it) → Create project
-
-### Step 2: Add a Web App to Firebase
-
-1. On the Firebase project home page, click the **`</>`** icon ("Add app — Web")
-2. Give it a nickname like `shake-factory-web` → click Register App
-3. **Firebase will show you a `firebaseConfig` object — copy it.** It looks like:
-   ```js
-   const firebaseConfig = {
-     apiKey: "AIzaSy...",
-     authDomain: "shake-factory.firebaseapp.com",
-     projectId: "shake-factory",
-     storageBucket: "shake-factory.appspot.com",
-     messagingSenderId: "1234567890",
-     appId: "1:1234567890:web:abcdef123"
-   };
-   ```
-4. Click "Continue to console"
-
-### Step 3: Enable Firestore Database
-
-1. In the Firebase console left menu: **Build → Firestore Database**
-2. Click **"Create database"**
-3. Choose **"Start in production mode"** → click Next
-4. Choose location: **`asia-south1` (Mumbai)** — closest to Bangalore → Enable
-5. Once created, go to the **"Rules"** tab. Replace the rules with:
-   ```
-   rules_version = '2';
-   service cloud.firestore {
-     match /databases/{database}/documents {
-       match /{document=**} {
-         allow read, write: if true;
-       }
-     }
-   }
-   ```
-6. Click **Publish**.
-
-> **Note on security:** these rules let anyone with the URL read and write data. That's fine for a low-stakes internal tool with a non-public URL — but if you want me to add stricter rules later (e.g., only allow writes from known devices), just ask.
-
-### Step 4: Edit `firebase-config.js`
-
-Open `firebase-config.js` in any text editor (or directly on GitHub). Paste in the values you copied from Step 2:
-
-```js
-export const firebaseConfig = {
-  apiKey: "AIzaSy...",                          // ← from Step 2
-  authDomain: "shake-factory.firebaseapp.com",  // ← from Step 2
-  projectId: "shake-factory",                   // ← from Step 2
-  storageBucket: "shake-factory.appspot.com",   // ← from Step 2
-  messagingSenderId: "1234567890",              // ← from Step 2
-  appId: "1:1234567890:web:abcdef123"           // ← from Step 2
-};
-
-export const OWNER_PASSWORD = "shakefactory2026";  // ← change this!
-```
-
-**Change `OWNER_PASSWORD`** to something only you know.
+| Collection / Doc | Shape | Notes |
+|---|---|---|
+| `checklists_opening/{YYYY-MM-DD}` | `{ tasks, completed, worker, timestamp, cash }` | One doc per day. `cash = { denominations, total }`. |
+| `checklists_closing/{YYYY-MM-DD}` | `{ tasks, completed, worker, timestamp, cash, bonusSales, bonusPercent }` | `bonusSales = { sectionName: { qty, amount } }`. `bonusPercent` is a snapshot at save-time so past days don't re-compute when admin changes the rate. |
+| `inventory/{YYYY-MM-DD}` | `{ items: { categoryKey: { itemName: qty } }, worker, timestamp }` | Save now stores a **complete** snapshot — blank inputs become 0. |
+| `attendance/{YYYY-MM-DD}_{worker}` | `{ date, worker, events: [{ type, ts }, ...] }` | `type` is `"in"` or `"out"`. Total hours = sum of paired in/out durations. |
+| `walkin_sales/{billNo}` | `{ billNo, amount, method, worker, date, ts }` | Doc id = bill number for cheap global uniqueness. `method` is `"upi"` or `"cash"`. |
+| `config/worker_passwords` | `{ surya, sushanth }` | Set from the owner dashboard, not in the repo. |
+| `config/inventory_thresholds` | `{ "categoryKey/itemName": minQty, ... }` | Admin overrides; fall back to `inventory-data.js` defaults. |
+| `config/bonus_config` | `{ sections: [...], percent: number }` | Drives the bonus section in closing.html. |
 
 ---
 
-## 🌐 HOSTING ON GITHUB PAGES
+## 👷 Daily use
 
-### Step 5: Create a GitHub repo
+### For workers
+- Bookmark `https://YOUR_USERNAME.github.io/TheThickShakeFactoryHSR/` on the shop device.
+- Tap **Attendance** at start of shift → Check In. Tap again to Check Out (or for shift breaks).
+- During the day, log each customer bill via the **Walk-in Sales** card.
+- Open the shop → **Opening Checklist** → tick tasks + count opening cash → Save.
+- Close the shop → **Closing Checklist** → tick tasks + enter bonus sales + count closing cash → Save.
+- Update **Inventory** when stock changes.
+- The 🎉 banner on home shows month-to-date incentive per worker. Motivating.
 
-1. Go to **https://github.com/new**
-2. Repository name: `shake-factory` (or whatever)
-3. Set it to **Public** (Pages is free for public repos)
-4. Click **Create repository**
-
-### Step 6: Upload all files
-
-**Easiest way (browser):**
-1. On the new empty repo page, click **"uploading an existing file"**
-2. Drag all 9 files (the `.html`, `.js`, `.css`, `.md` files) into the upload area
-3. Scroll down → click **Commit changes**
-
-**Or via Git CLI (if you know it):**
-```bash
-git clone https://github.com/YOUR_USERNAME/shake-factory.git
-cd shake-factory
-# copy all files into this folder
-git add .
-git commit -m "Initial commit"
-git push
-```
-
-### Step 7: Enable GitHub Pages
-
-1. In your repo on GitHub, click **Settings** (top tab)
-2. Left sidebar → click **Pages**
-3. Under "Build and deployment" → Source → select **Deploy from a branch**
-4. Branch → select **`main`** → folder **`/ (root)`** → click **Save**
-5. Wait ~1 minute. Refresh the page. You'll see:
-   > *Your site is live at* `https://YOUR_USERNAME.github.io/shake-factory/`
-
-That's your shop's website URL. 🎉
+### For owner
+- `owner.html` → enter password.
+- **First time**: scroll to 🔑 *Worker Passwords*, set both workers' passwords. Then 🎁 *Bonus Configuration*, add sections + the bonus %.
+- **Daily**: pick a date → see attendance, walk-in, cash, bonus, checklists for that day.
+- **Monthly**: each section has a Monthly toggle + CSV export.
+- Use **📋 Minimum Quantity Levels** to tune low-stock thresholds. ⚠️ list updates instantly.
 
 ---
 
-## 👷 DAILY USE
-
-### For workers:
-- Bookmark `https://YOUR_USERNAME.github.io/shake-factory/` on the shop laptop browser
-- Three buttons: Opening / Closing / Inventory
-- Tick boxes / fill quantities → click Save
-- They will be asked for their name when saving (so you know who submitted what)
-
-### For you (owner):
-- Go to `https://YOUR_USERNAME.github.io/shake-factory/owner.html`
-- Enter your password
-- See:
-  - Today's checklist completion
-  - Low-stock items (auto-flagged from latest inventory)
-  - Full inventory snapshot
-  - Last 14 days activity table
-  - Export low-stock list as CSV (to copy into orders)
-
----
-
-## 🔧 COMMON TASKS
+## 🔧 Common tasks
 
 ### Change the owner password
-Edit `firebase-config.js`, change the `OWNER_PASSWORD` value, commit. Live in ~1 min.
+Edit `firebase-config.js`, update `OWNER_PASSWORD`, commit. Live in ~1 min.
 
-### Add or remove inventory items
-Edit `inventory-data.js`. Each item is one line — copy the format. Adjust `threshold` values to control when the dashboard flags items as "low stock".
+### Add / remove a worker
+Currently the portal hard-codes Surya & Sushanth in the dropdowns (`auth-modal.js`, `attendance.html`, `walkin.html`). To add a third worker: add to those dropdowns, then set their password from the owner dashboard.
+
+### Change worker passwords
+Owner dashboard → 🔑 *Worker Passwords* → pick worker → enter new password → Save.
+
+### Add or remove an inventory item
+Edit `inventory-data.js`. New items appear in the worker UI immediately (with their default threshold) and in the admin's *Minimum Quantity Levels* panel as "(default)" until admin overrides.
 
 ### Change a checklist task
-Edit the `tasks` array at the top of `<script>` in `opening.html` or `closing.html`.
+Edit the `tasks` array near the top of the `<script>` in `opening.html` or `closing.html`.
+
+### Change the bonus % or sections
+Owner dashboard → 🎁 *Bonus Configuration* → edit → Save. Past days keep their snapshotted percent; only future closings use the new rate.
 
 ### Look at raw data
-Firebase Console → your project → Firestore Database → you'll see collections:
-- `checklists_opening` — one document per date
-- `checklists_closing` — one document per date
-- `inventory` — one document per date
+Firebase Console → Firestore Database. Collections listed in the data-model table above.
 
 ### Hide owner.html from search engines (optional)
-Workers won't easily find it, but to be safer create a file `robots.txt`:
+Create `robots.txt`:
 ```
 User-agent: *
 Disallow: /owner.html
@@ -185,28 +139,38 @@ Disallow: /owner.html
 
 ---
 
-## 💰 COSTS
+## 💰 Costs
 
-**Zero.** Free tier limits (you'll never hit these):
-- Firebase Firestore free: 1 GB storage, 50K reads/day, 20K writes/day
-- GitHub Pages free: 100 GB bandwidth/month
-- One shop, ~5 submissions/day = ~150/month. Practically rounding error against the limits.
+**Zero.** All within free tiers:
+- Firestore free: 1 GB storage, 50K reads/day, 20K writes/day
+- GitHub Pages free: 100 GB/month bandwidth
+
+A typical day's reads on the admin dashboard load: ~200 docs (cheap multi-read fetches across attendance, walk-in, cash, bonus). Worker home: 1 fetch (cached 5 min). Easily within free quotas.
 
 ---
 
-## 🆘 TROUBLESHOOTING
+## 🆘 Troubleshooting
 
-**Site loads but Save buttons fail with an error**
-→ You haven't pasted the Firebase config into `firebase-config.js`, or Firestore rules aren't published. Re-check Steps 3 and 4.
+**Workers see "Worker passwords not configured" when clicking a card**
+→ Owner needs to set both workers' passwords once from `owner.html` → 🔑 Worker Passwords.
+
+**"Please open this page from the home portal" appears on a worker page**
+→ The auth token in `sessionStorage` expired (60-min TTL) or they navigated directly. Tell them to go back to home and tap the card.
+
+**Bonus section doesn't appear on closing checklist**
+→ Owner hasn't set up bonus sections. Owner dashboard → 🎁 Bonus Configuration → add at least one section → Save Configuration.
+
+**A bonus section the worker is editing was just removed by admin**
+→ When the worker hits Save, an alert pops up: "Bonus sections were updated…". The page re-renders without the removed section. Worker reviews and saves again.
+
+**Walk-in Sales says "Bill HSR0001 already exists"**
+→ Bill numbers are globally unique (the doc id). Use a fresh number, or delete the old entry first if it was a mistake.
+
+**Site loads but Save fails with permission error**
+→ Firestore rules aren't published. SETUP-GUIDE.md → Step 3.
 
 **Owner login shows "Incorrect password"**
 → Check `OWNER_PASSWORD` in `firebase-config.js`. Case-sensitive.
 
-**Site doesn't load at all**
-→ GitHub Pages takes 1–2 mins after first publish. Refresh. Make sure you committed all files.
-
-**Worker accidentally clicks "Owner" link**
-→ They can't get past the login screen. The URL is also unlisted from the home page (only a tiny dot at the bottom). You can remove that link entirely if you want — delete the `<a href="owner.html">·</a>` line from `index.html`.
-
-**I want to download / export all my data**
-→ Firebase Console → Firestore → use the export feature, or I can give you a small script. Ask anytime.
+**I want to export all my data**
+→ Firebase Console → Firestore → use the export feature, or ask for a small script.

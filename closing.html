@@ -49,6 +49,8 @@
       </div>
     </div>
 
+    <div id="cashCounter" class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-emerald-400"></div>
+
     <button id="submitBtn" class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-md transition-all">
       Save Closing Checklist
     </button>
@@ -58,6 +60,7 @@
 
   <script type="module">
     import { saveChecklist, getTodayChecklist, getBonusConfig } from './app.js';
+    import { setupCashCounter } from './cash-shared.js';
 
     // ===== Auth gate =====
     const _auth = JSON.parse(sessionStorage.getItem('tsf_auth') || '{}');
@@ -108,6 +111,13 @@
 
     document.querySelectorAll('#checklistItems input').forEach(cb => {
       cb.addEventListener('change', updateProgress);
+    });
+
+    // ===== Cash counter =====
+    const cashCounter = setupCashCounter({
+      container: document.getElementById('cashCounter'),
+      headerLabel: 'Closing Cash',
+      accent: 'emerald',
     });
 
     // ===== Bonus sales section =====
@@ -211,6 +221,9 @@
         // Re-render once config is also loaded
         if (loadedBonusConfig) renderBonusSection();
       }
+      if (data && data.cash && data.cash.denominations) {
+        cashCounter.setDenominations(data.cash.denominations);
+      }
     }).catch(err => console.error(err));
 
     document.getElementById('submitBtn').addEventListener('click', async () => {
@@ -253,6 +266,9 @@
       });
       const bonusPercent = Number(loadedBonusConfig?.percent) || 0;
 
+      const denominations = cashCounter.getDenominations();
+      const cashTotal = cashCounter.getTotal();
+
       try {
         await saveChecklist('closing', {
           tasks: checked,
@@ -261,6 +277,7 @@
           timestamp: new Date().toISOString(),
           bonusSales,
           bonusPercent,
+          cash: { denominations, total: cashTotal },
         });
 
         // Live recompute the just-saved incentive (so the message reflects what's stored)

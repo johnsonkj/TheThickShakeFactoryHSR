@@ -148,6 +148,31 @@
       </div>
     </div>
 
+    <!-- Section: Cash -->
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-emerald-400">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
+        <h2 class="text-lg font-bold text-gray-800">💵 Cash</h2>
+        <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
+          <button id="cashDailyBtn" class="px-3 py-1 rounded-md text-sm font-semibold bg-white text-emerald-600 shadow-sm">Daily</button>
+          <button id="cashMonthlyBtn" class="px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800">Monthly</button>
+        </div>
+      </div>
+
+      <div id="cashDaily">
+        <p class="text-xs text-gray-500 mb-3">Opening &amp; closing cash for the date selected above. Difference = Closing − Opening.</p>
+        <div id="cashDailyContent">Loading…</div>
+      </div>
+
+      <div id="cashMonthly" class="hidden">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <label class="text-sm text-gray-700 font-semibold">Month:</label>
+          <input id="cashMonthPicker" type="month" class="px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-400 focus:outline-none" />
+          <button id="cashExportBtn" class="ml-auto px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold">Export CSV</button>
+        </div>
+        <div id="cashMonthlyContent">Loading…</div>
+      </div>
+    </div>
+
     <!-- Section: Walk-in Sales -->
     <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-emerald-400">
       <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
@@ -239,6 +264,7 @@
       getWalkinSalesByDate, getWalkinSalesByMonth, deleteWalkinSale,
       getBonusConfig, setBonusConfig, getMonthlyIncentive, currentYyyymm
     } from './app.js';
+    import { DENOMINATIONS, computeCashTotal } from './cash-shared.js';
     import { INVENTORY } from './inventory-data.js';
     import { computeTotalMs, formatDuration, formatTime, buildSessions, renderEventList } from './attendance-shared.js';
 
@@ -310,6 +336,7 @@
       initWalkinSales();
       initBonusConfig();
       initBonusIncentive();
+      initCash();
     }
 
     async function loadForDate(date) {
@@ -339,6 +366,9 @@
 
       // Bonus incentive (daily) — also driven by the same date picker
       loadIncDaily(date);
+
+      // Cash (daily) — also driven by the same date picker
+      loadCashDaily(date);
     }
 
     function renderChecklist(type, data, total) {
@@ -637,6 +667,214 @@
       const a = document.createElement('a');
       a.href = url;
       a.download = `attendance-${yyyymm}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ===== CASH (Opening / Closing reconciliation) =====
+    function fmtCashRupees(n) {
+      return '₹ ' + (Number.isFinite(n) ? n.toLocaleString('en-IN') : '0');
+    }
+
+    function getCash(closingOrOpeningDoc) {
+      if (!closingOrOpeningDoc || !closingOrOpeningDoc.cash) return null;
+      const c = closingOrOpeningDoc.cash;
+      // Prefer stored total; fall back to recompute from denominations
+      const total = Number(c.total);
+      if (Number.isFinite(total)) return { denominations: c.denominations || {}, total };
+      return { denominations: c.denominations || {}, total: computeCashTotal(c.denominations || {}) };
+    }
+
+    function initCash() {
+      const dailyBtn = document.getElementById('cashDailyBtn');
+      const monthlyBtn = document.getElementById('cashMonthlyBtn');
+      const dailyPanel = document.getElementById('cashDaily');
+      const monthlyPanel = document.getElementById('cashMonthly');
+      function activate(which) {
+        if (which === 'daily') {
+          dailyPanel.classList.remove('hidden');
+          monthlyPanel.classList.add('hidden');
+          dailyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold bg-white text-emerald-600 shadow-sm';
+          monthlyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800';
+        } else {
+          dailyPanel.classList.add('hidden');
+          monthlyPanel.classList.remove('hidden');
+          monthlyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold bg-white text-emerald-600 shadow-sm';
+          dailyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800';
+        }
+      }
+      dailyBtn.addEventListener('click', () => activate('daily'));
+      monthlyBtn.addEventListener('click', () => activate('monthly'));
+
+      const monthPicker = document.getElementById('cashMonthPicker');
+      const ym = currentYyyymm();
+      monthPicker.value = ym;
+      monthPicker.addEventListener('change', () => loadCashMonthly(monthPicker.value));
+      document.getElementById('cashExportBtn').addEventListener('click', () => exportCashMonth(monthPicker.value));
+
+      loadCashMonthly(ym);
+    }
+
+    function renderDenomTable(denominations) {
+      let html = '<table class="w-full text-xs mt-2"><tbody>';
+      DENOMINATIONS.forEach(d => {
+        const c = Number(denominations[d]) || 0;
+        if (c === 0) return;
+        html += `<tr>
+          <td class="py-1 text-gray-600">₹ ${d}</td>
+          <td class="py-1 text-center text-gray-400">×</td>
+          <td class="py-1 text-gray-700">${c}</td>
+          <td class="py-1 text-right text-gray-700">${fmtCashRupees(c * d)}</td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+      return html;
+    }
+
+    async function loadCashDaily(date) {
+      const container = document.getElementById('cashDailyContent');
+      try {
+        const [openingDoc, closingDoc] = await Promise.all([
+          getChecklistByDate('opening', date),
+          getChecklistByDate('closing', date),
+        ]);
+        const opening = getCash(openingDoc);
+        const closing = getCash(closingDoc);
+        const openTotal = opening ? opening.total : null;
+        const closeTotal = closing ? closing.total : null;
+        const diff = (openTotal != null && closeTotal != null) ? (closeTotal - openTotal) : null;
+
+        let html = `<div class="grid grid-cols-3 gap-3 mb-4">
+          <div class="bg-emerald-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Opening</div>
+            <div class="font-bold text-emerald-700">${openTotal != null ? fmtCashRupees(openTotal) : '—'}</div>
+          </div>
+          <div class="bg-blue-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Closing</div>
+            <div class="font-bold text-blue-700">${closeTotal != null ? fmtCashRupees(closeTotal) : '—'}</div>
+          </div>
+          <div class="${diff != null && diff < 0 ? 'bg-red-50' : 'bg-gray-100'} rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Difference</div>
+            <div class="font-bold ${diff != null && diff < 0 ? 'text-red-700' : 'text-gray-800'}">${diff != null ? (diff >= 0 ? '+' : '') + fmtCashRupees(diff) : '—'}</div>
+          </div>
+        </div>`;
+
+        if (opening) {
+          html += `<details class="mb-2 bg-emerald-50/50 rounded-lg">
+            <summary class="cursor-pointer p-3 text-sm font-semibold text-emerald-700">Opening breakdown · ${fmtCashRupees(opening.total)}</summary>
+            <div class="px-4 pb-3">${renderDenomTable(opening.denominations)}</div>
+          </details>`;
+        }
+        if (closing) {
+          html += `<details class="mb-2 bg-blue-50/50 rounded-lg">
+            <summary class="cursor-pointer p-3 text-sm font-semibold text-blue-700">Closing breakdown · ${fmtCashRupees(closing.total)}</summary>
+            <div class="px-4 pb-3">${renderDenomTable(closing.denominations)}</div>
+          </details>`;
+        }
+        if (!opening && !closing) {
+          html += '<p class="text-gray-400 italic text-sm">No cash recorded for this date.</p>';
+        }
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Error: ${e.message}</p>`;
+      }
+    }
+
+    let lastCashMonth = null; // { yyyymm, rows } cache for export
+
+    async function loadCashMonthly(yyyymm) {
+      const container = document.getElementById('cashMonthlyContent');
+      container.innerHTML = '<p class="text-sm text-gray-500">Loading…</p>';
+      try {
+        const [y, m] = yyyymm.split('-').map(Number);
+        const lastDay = new Date(y, m, 0).getDate();
+        const dates = [];
+        for (let d = 1; d <= lastDay; d++) {
+          dates.push(`${yyyymm}-${String(d).padStart(2, '0')}`);
+        }
+
+        const results = await Promise.all(dates.map(async date => {
+          const [op, cl] = await Promise.all([
+            getChecklistByDate('opening', date),
+            getChecklistByDate('closing', date),
+          ]);
+          return { date, opening: getCash(op), closing: getCash(cl) };
+        }));
+
+        const rows = results.filter(r => r.opening || r.closing);
+        lastCashMonth = { yyyymm, rows };
+
+        let monthOpen = 0, monthClose = 0;
+        rows.forEach(r => {
+          if (r.opening) monthOpen += r.opening.total;
+          if (r.closing) monthClose += r.closing.total;
+        });
+        const monthDiff = monthClose - monthOpen;
+
+        let html = `<div class="grid grid-cols-3 gap-3 mb-4">
+          <div class="bg-emerald-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Month opening total</div>
+            <div class="font-bold text-emerald-700">${fmtCashRupees(monthOpen)}</div>
+          </div>
+          <div class="bg-blue-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Month closing total</div>
+            <div class="font-bold text-blue-700">${fmtCashRupees(monthClose)}</div>
+          </div>
+          <div class="${monthDiff < 0 ? 'bg-red-50' : 'bg-gray-100'} rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Month difference</div>
+            <div class="font-bold ${monthDiff < 0 ? 'text-red-700' : 'text-gray-800'}">${monthDiff >= 0 ? '+' : ''}${fmtCashRupees(monthDiff)}</div>
+          </div>
+        </div>`;
+
+        if (rows.length === 0) {
+          html += '<p class="text-gray-400 italic text-sm">No cash recorded for this month.</p>';
+          container.innerHTML = html;
+          return;
+        }
+
+        html += `<div class="overflow-x-auto"><table class="w-full text-sm">
+          <thead><tr class="text-left text-gray-500 border-b">
+            <th class="py-2">Date</th>
+            <th class="py-2 text-right">Opening</th>
+            <th class="py-2 text-right">Closing</th>
+            <th class="py-2 text-right">Difference</th>
+          </tr></thead><tbody>`;
+        rows.forEach(r => {
+          const o = r.opening ? r.opening.total : null;
+          const c = r.closing ? r.closing.total : null;
+          const d = (o != null && c != null) ? (c - o) : null;
+          html += `<tr class="border-b border-gray-50">
+            <td class="py-2 font-semibold">${r.date}</td>
+            <td class="py-2 text-right text-emerald-700">${o != null ? fmtCashRupees(o) : '—'}</td>
+            <td class="py-2 text-right text-blue-700">${c != null ? fmtCashRupees(c) : '—'}</td>
+            <td class="py-2 text-right font-semibold ${d != null && d < 0 ? 'text-red-700' : 'text-gray-700'}">${d != null ? (d >= 0 ? '+' : '') + fmtCashRupees(d) : '—'}</td>
+          </tr>`;
+        });
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Error: ${e.message}</p>`;
+      }
+    }
+
+    function exportCashMonth(yyyymm) {
+      if (!lastCashMonth || lastCashMonth.yyyymm !== yyyymm) {
+        alert('Load the month first.');
+        return;
+      }
+      const rows = lastCashMonth.rows;
+      let csv = 'Date,Opening Total,Closing Total,Difference\n';
+      rows.forEach(r => {
+        const o = r.opening ? r.opening.total : '';
+        const c = r.closing ? r.closing.total : '';
+        const d = (r.opening && r.closing) ? (r.closing.total - r.opening.total) : '';
+        csv += `"${r.date}",${o},${c},${d}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cash-${yyyymm}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     }

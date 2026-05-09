@@ -31,6 +31,8 @@
       <ul id="checklistItems" class="space-y-3"></ul>
     </div>
 
+    <div id="cashCounter" class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-emerald-400"></div>
+
     <button id="submitBtn" class="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-md transition-all">
       Save Opening Checklist
     </button>
@@ -40,6 +42,7 @@
 
   <script type="module">
     import { saveChecklist, getTodayChecklist } from './app.js';
+    import { setupCashCounter } from './cash-shared.js';
 
     // ===== Auth gate — must arrive here from index.html with a fresh tsf_auth =====
     const _auth = JSON.parse(sessionStorage.getItem('tsf_auth') || '{}');
@@ -106,6 +109,13 @@
       cb.addEventListener('change', updateProgress);
     });
 
+    // ===== Cash counter (mounts immediately; pre-filled when checklist data loads) =====
+    const cashCounter = setupCashCounter({
+      container: document.getElementById('cashCounter'),
+      headerLabel: 'Opening Cash',
+      accent: 'emerald',
+    });
+
     // Pre-fill if already saved today
     getTodayChecklist('opening').then(data => {
       if (data && data.tasks) {
@@ -118,6 +128,9 @@
           document.getElementById('message').innerHTML = '<p class="text-sm text-green-600">✓ Already saved today. You can update and save again.</p>';
         }
       }
+      if (data && data.cash && data.cash.denominations) {
+        cashCounter.setDenominations(data.cash.denominations);
+      }
     }).catch(err => console.error(err));
 
     document.getElementById('submitBtn').addEventListener('click', async () => {
@@ -128,12 +141,16 @@
       const checked = Array.from(document.querySelectorAll('#checklistItems input')).map(cb => cb.checked);
       const allDone = checked.every(c => c);
 
+      const denominations = cashCounter.getDenominations();
+      const cashTotal = cashCounter.getTotal();
+
       try {
         await saveChecklist('opening', {
           tasks: checked,
           completed: allDone,
           worker: worker,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          cash: { denominations, total: cashTotal }
         });
         document.getElementById('message').innerHTML = `<p class="text-green-600 font-semibold">✓ Saved successfully!</p>`;
         btn.textContent = 'Saved ✓';
