@@ -121,6 +121,24 @@ export async function getTodayStatus() {
 }
 
 // =============================================================================
+//  INVENTORY THRESHOLDS  (config/inventory_thresholds)
+//  Stored as flat map: { "categoryKey/itemName": minQty, ... }
+//  Effective threshold = override here, falling back to the default in inventory-data.js
+// =============================================================================
+
+export async function getInventoryThresholds() {
+  const ref = doc(db, "config", "inventory_thresholds");
+  const snap = await getDoc(ref);
+  return snap.exists() ? snap.data() : null;
+}
+
+export async function setInventoryThresholdsBatch(updates) {
+  if (!updates || Object.keys(updates).length === 0) return;
+  const ref = doc(db, "config", "inventory_thresholds");
+  await setDoc(ref, updates, { merge: true });
+}
+
+// =============================================================================
 //  WORKER PASSWORDS  (config/worker_passwords)
 // =============================================================================
 

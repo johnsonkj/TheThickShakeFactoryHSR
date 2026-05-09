@@ -32,7 +32,7 @@
 
   <script type="module">
     import { INVENTORY } from './inventory-data.js';
-    import { saveInventory, getTodayInventory, getLatestInventory } from './app.js';
+    import { saveInventory, getTodayInventory, getLatestInventory, getInventoryThresholds } from './app.js';
 
     // ===== Auth gate =====
     const _auth = JSON.parse(sessionStorage.getItem('tsf_auth') || '{}');
@@ -52,6 +52,12 @@
 
     let activeTab = Object.keys(INVENTORY)[0];
     let formData = {}; // { categoryKey: { itemName: qty } }
+    let thresholdOverrides = {}; // { "catKey/itemName": minQty } — admin overrides
+
+    function effectiveThreshold(catKey, item) {
+      const key = `${catKey}/${item.name}`;
+      return key in thresholdOverrides ? thresholdOverrides[key] : item.threshold;
+    }
 
     // Build tabs
     const tabsEl = document.getElementById('tabs');
@@ -130,6 +136,13 @@
 
     // Pre-fill today's existing inventory if any, otherwise pre-fill from latest saved
     async function preloadInventory() {
+      // Load admin-set minimums first (falls back to defaults from inventory-data.js per item)
+      try {
+        thresholdOverrides = (await getInventoryThresholds()) || {};
+      } catch (e) {
+        console.error('Threshold load failed:', e);
+      }
+
       let data = await getTodayInventory();
       let label = 'today';
       if (!data) {
@@ -150,14 +163,89 @@
     }
     preloadInventory().catch(err => console.error(err));
 
+    // Build a complete inventory snapshot — every item gets a numeric value
+    // (0 if the worker left it blank). Returns { items, lowItems }.
+    function buildSnapshotAndLowList() {
+      const items = {};
+      const lowItems = [];
+      Object.entries(INVENTORY).forEach(([catKey, cat]) => {
+        items[catKey] = {};
+        Object.values(cat.sections).flat().forEach(item => {
+          const entered = formData[catKey] && formData[catKey][item.name];
+          const qty = Number.isFinite(entered) ? entered : 0;
+          items[catKey][item.name] = qty;
+          const min = effectiveThreshold(catKey, item);
+          // Strict less-than. qty == min and qty == 0 == min both = no warning.
+          if (qty < min) {
+            lowItems.push({ category: cat.label, name: item.name, qty, min, unit: item.unit });
+          }
+        });
+      });
+      return { items, lowItems };
+    }
+
+    function showLowStockDialog(lowItems) {
+      return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+        overlay.innerHTML = `
+          <div class="bg-white rounded-2xl p-6 shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col">
+            <h3 class="text-lg font-bold text-gray-800 mb-1">⚠ Low-stock items</h3>
+            <p class="text-sm text-gray-500 mb-4">${lowItems.length} item${lowItems.length === 1 ? ' is' : 's are'} below the minimum quantity. Please inform the owner / reorder.</p>
+            <div class="overflow-y-auto flex-1 mb-4">
+              <table class="w-full text-sm">
+                <thead class="sticky top-0 bg-white">
+                  <tr class="text-left text-gray-500 border-b">
+                    <th class="py-2">Item</th>
+                    <th class="py-2">Category</th>
+                    <th class="py-2 text-right">Current</th>
+                    <th class="py-2 text-right">Min</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${lowItems.map(it => `
+                    <tr class="border-b border-gray-50">
+                      <td class="py-2 font-semibold text-red-600">${it.name}</td>
+                      <td class="py-2 text-gray-500 text-xs">${it.category}</td>
+                      <td class="py-2 text-right">${it.qty} <span class="text-gray-400 text-xs">${it.unit}</span></td>
+                      <td class="py-2 text-right text-gray-400">${it.min} <span class="text-xs">${it.unit}</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+            <div class="flex gap-2">
+              <button id="lsCancel" class="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg font-semibold text-gray-700">Cancel & Edit</button>
+              <button id="lsConfirm" class="flex-1 px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-lg font-semibold">Save Anyway</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        function close(result) {
+          if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+          resolve(result);
+        }
+        overlay.querySelector('#lsCancel').addEventListener('click', () => close(false));
+        overlay.querySelector('#lsConfirm').addEventListener('click', () => close(true));
+        overlay.addEventListener('click', e => { if (e.target === overlay) close(false); });
+      });
+    }
+
     document.getElementById('submitBtn').addEventListener('click', async () => {
       const btn = document.getElementById('submitBtn');
+      const { items, lowItems } = buildSnapshotAndLowList();
+
+      if (lowItems.length > 0) {
+        const proceed = await showLowStockDialog(lowItems);
+        if (!proceed) return;
+      }
+
       btn.disabled = true;
       btn.textContent = 'Saving...';
 
       try {
         await saveInventory({
-          items: formData,
+          items,
           worker: worker,
           timestamp: new Date().toISOString()
         });
