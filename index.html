@@ -10,13 +10,25 @@
 <body class="bg-gradient-to-br from-pink-50 via-white to-amber-50 min-h-screen">
   <div class="max-w-6xl mx-auto px-4 py-10">
     <!-- Header -->
-    <header class="text-center mb-10">
+    <header class="text-center mb-8">
       <div class="inline-block bg-white rounded-full px-6 py-2 shadow-sm mb-4">
         <span class="text-sm font-semibold text-pink-600 tracking-wider">THE THICKSHAKE FACTORY</span>
       </div>
       <h1 class="text-4xl font-bold text-gray-800 mb-2">Shop Portal</h1>
       <p class="text-gray-500" id="todayDate"></p>
     </header>
+
+    <!-- Incentive banner (this month, per worker) -->
+    <div id="incentiveBanner" class="hidden bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl p-4 shadow-md mb-6 border-l-4 border-amber-400">
+      <div class="flex items-center gap-4">
+        <div class="text-4xl">🎉</div>
+        <div class="flex-1">
+          <div class="text-xs text-amber-700 uppercase tracking-wider font-semibold">This Month's Incentive</div>
+          <div class="text-2xl font-bold text-amber-800"><span id="incentivePerWorker">₹ 0</span> <span class="text-sm font-semibold text-amber-700">each</span></div>
+          <div class="text-xs text-gray-500" id="incentiveSubline"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- Action Cards -->
     <div class="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-10">
@@ -88,7 +100,7 @@
   <script type="module" src="firebase-config.js"></script>
   <script type="module" src="app.js"></script>
   <script type="module">
-    import { getTodayStatus } from './app.js';
+    import { getTodayStatus, getMonthlyIncentive, currentYyyymm } from './app.js';
     import { requireWorkerAuth } from './auth-modal.js';
 
     const today = new Date();
@@ -119,6 +131,39 @@
         location.href = card.getAttribute('href');
       });
     });
+
+    // ===== Incentive banner (month-to-date, per worker) =====
+    // Cached in sessionStorage for 5 min so navigating around doesn't re-read 30+ docs
+    // each time. Cache is busted when closing.html saves a checklist.
+    const INC_CACHE_KEY = 'tsf_incentive_cache';
+    const INC_TTL_MS = 5 * 60 * 1000;
+
+    async function loadIncentiveBanner() {
+      try {
+        const yyyymm = currentYyyymm();
+        let result = null;
+        const raw = sessionStorage.getItem(INC_CACHE_KEY);
+        if (raw) {
+          try {
+            const c = JSON.parse(raw);
+            if (c.yyyymm === yyyymm && Date.now() - c.at < INC_TTL_MS) result = c.data;
+          } catch {}
+        }
+        if (!result) {
+          result = await getMonthlyIncentive(yyyymm);
+          sessionStorage.setItem(INC_CACHE_KEY, JSON.stringify({ yyyymm, data: result, at: Date.now() }));
+        }
+        if (result.perWorkerShare > 0) {
+          document.getElementById('incentivePerWorker').textContent = '₹ ' + result.perWorkerShare.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+          const monthName = new Date(yyyymm + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+          document.getElementById('incentiveSubline').textContent = `${monthName} · accumulating daily — keep it up!`;
+          document.getElementById('incentiveBanner').classList.remove('hidden');
+        }
+      } catch (e) {
+        console.error('Incentive load failed:', e);
+      }
+    }
+    loadIncentiveBanner();
 
     // Load today's status
     getTodayStatus().then(status => {

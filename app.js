@@ -158,6 +158,104 @@ export async function deleteWalkinSale(billNo) {
 }
 
 // =============================================================================
+//  BONUS CONFIG + INCENTIVE
+//  -----------------------------------------------------------------------------
+//  Admin sets a list of bonus section names and a percent. When workers save the
+//  closing checklist, they include `bonusSales: { sectionName: { qty, amount } }`
+//  and `bonusPercent` (snapshot of percent at save-time, so past days don't
+//  retroactively change when admin updates the percent).
+//
+//  Total day incentive = sum(amounts) × bonusPercent / 100.
+//  Per-worker share    = day incentive / 2  (split 50/50 between Surya & Sushanth).
+// =============================================================================
+
+export async function getBonusConfig() {
+  const ref = doc(db, "config", "bonus_config");
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const d = snap.data();
+    return {
+      sections: Array.isArray(d.sections) ? d.sections : [],
+      percent: Number.isFinite(d.percent) ? d.percent : 0,
+    };
+  }
+  return { sections: [], percent: 0 };
+}
+
+export async function setBonusConfig(config) {
+  const safe = {
+    sections: Array.isArray(config.sections)
+      ? config.sections.map(s => String(s).trim()).filter(Boolean)
+      : [],
+    percent: Number.isFinite(Number(config.percent)) && Number(config.percent) >= 0
+      ? Number(config.percent)
+      : 0,
+  };
+  // Dedupe section names while preserving order
+  const seen = new Set();
+  safe.sections = safe.sections.filter(n => {
+    if (seen.has(n)) return false;
+    seen.add(n);
+    return true;
+  });
+  const ref = doc(db, "config", "bonus_config");
+  await setDoc(ref, safe);
+  return safe;
+}
+
+export function currentYyyymm() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Compute month-to-date incentive from stored closing checklists.
+ * Each day uses its own snapshotted bonusPercent.
+ */
+export async function getMonthlyIncentive(yyyymm) {
+  const [y, m] = yyyymm.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const dates = [];
+  for (let d = 1; d <= lastDay; d++) {
+    dates.push(`${yyyymm}-${String(d).padStart(2, '0')}`);
+  }
+  const docs = await Promise.all(dates.map(async date => {
+    const ref = doc(db, "checklists_closing", date);
+    const snap = await getDoc(ref);
+    return snap.exists() ? { date, data: snap.data() } : null;
+  }));
+
+  const days = [];
+  let monthBonusTotal = 0;
+  let monthIncentive = 0;
+  docs.forEach(item => {
+    if (!item || !item.data || !item.data.bonusSales) return;
+    const sales = item.data.bonusSales;
+    const dayBonusTotal = Object.values(sales).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    if (dayBonusTotal === 0) return;
+    const pct = Number(item.data.bonusPercent) || 0;
+    const dayIncentive = (dayBonusTotal * pct) / 100;
+    days.push({
+      date: item.date,
+      bonusTotal: dayBonusTotal,
+      bonusPercent: pct,
+      dayIncentive,
+      dayPerWorker: dayIncentive / 2,
+      sales,
+    });
+    monthBonusTotal += dayBonusTotal;
+    monthIncentive += dayIncentive;
+  });
+  return {
+    yyyymm,
+    days,
+    monthBonusTotal,
+    monthIncentive,
+    perWorkerShare: monthIncentive / 2,
+  };
+}
+
+// =============================================================================
 //  STATUS / DASHBOARD
 // =============================================================================
 

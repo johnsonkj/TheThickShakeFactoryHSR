@@ -96,6 +96,58 @@
       </div>
     </div>
 
+    <!-- Section: Bonus Configuration -->
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-yellow-400">
+      <h2 class="text-lg font-bold text-gray-800 mb-2">🎁 Bonus Configuration</h2>
+      <p class="text-xs text-gray-500 mb-4">Set the percentage and the bonus sections workers will fill in their closing checklist. Removing a section just hides it from workers — past data is preserved.</p>
+
+      <div class="flex items-end gap-3 mb-4 flex-wrap">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">Bonus % of sales</label>
+          <input id="bonusPercentInput" type="number" min="0" step="0.5" class="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:border-yellow-400 focus:outline-none" />
+        </div>
+        <p class="text-xs text-gray-500 pb-3">% of total bonus sales each day, split 50/50 between workers.</p>
+      </div>
+
+      <label class="block text-xs font-semibold text-gray-600 mb-2">Sections</label>
+      <div id="bonusSectionsList" class="mb-3"></div>
+
+      <div class="flex gap-2 mb-4">
+        <input id="bonusNewSection" type="text" placeholder="Add new section (e.g. Sundae)" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:border-yellow-400 focus:outline-none" />
+        <button id="bonusAddBtn" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg font-semibold text-gray-700">+ Add</button>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="bonusSaveBtn" class="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-semibold">Save Configuration</button>
+        <span id="bonusSaveMsg" class="text-sm"></span>
+      </div>
+    </div>
+
+    <!-- Section: Bonus Incentive Tracker -->
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-green-400">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
+        <h2 class="text-lg font-bold text-gray-800">💰 Bonus Incentive</h2>
+        <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
+          <button id="incDailyBtn" class="px-3 py-1 rounded-md text-sm font-semibold bg-white text-green-600 shadow-sm">Daily</button>
+          <button id="incMonthlyBtn" class="px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800">Monthly</button>
+        </div>
+      </div>
+
+      <div id="incDaily">
+        <p class="text-xs text-gray-500 mb-3">For the date selected above. Uses the percent that was active when that day's closing was saved.</p>
+        <div id="incDailyContent">Loading…</div>
+      </div>
+
+      <div id="incMonthly" class="hidden">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <label class="text-sm text-gray-700 font-semibold">Month:</label>
+          <input id="incMonthPicker" type="month" class="px-3 py-2 border border-gray-300 rounded-lg focus:border-green-400 focus:outline-none" />
+          <button id="incExportBtn" class="ml-auto px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-semibold">Export CSV</button>
+        </div>
+        <div id="incMonthlyContent">Loading…</div>
+      </div>
+    </div>
+
     <!-- Section: Walk-in Sales -->
     <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-emerald-400">
       <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
@@ -184,7 +236,8 @@
       getWorkerPasswords, setWorkerPassword,
       getAttendanceForDate, getAttendanceForMonth,
       getInventoryThresholds, setInventoryThresholdsBatch,
-      getWalkinSalesByDate, getWalkinSalesByMonth, deleteWalkinSale
+      getWalkinSalesByDate, getWalkinSalesByMonth, deleteWalkinSale,
+      getBonusConfig, setBonusConfig, getMonthlyIncentive, currentYyyymm
     } from './app.js';
     import { INVENTORY } from './inventory-data.js';
     import { computeTotalMs, formatDuration, formatTime, buildSessions, renderEventList } from './attendance-shared.js';
@@ -255,6 +308,8 @@
       initWorkerPasswords();
       initThresholdEditor();
       initWalkinSales();
+      initBonusConfig();
+      initBonusIncentive();
     }
 
     async function loadForDate(date) {
@@ -281,6 +336,9 @@
 
       // Walk-in sales (daily) — driven by the same date picker
       loadWalkinDaily(date);
+
+      // Bonus incentive (daily) — also driven by the same date picker
+      loadIncDaily(date);
     }
 
     function renderChecklist(type, data, total) {
@@ -579,6 +637,273 @@
       const a = document.createElement('a');
       a.href = url;
       a.download = `attendance-${yyyymm}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ===== BONUS CONFIGURATION =====
+    let bonusConfigState = { sections: [], percent: 0 };
+
+    async function initBonusConfig() {
+      try {
+        bonusConfigState = await getBonusConfig();
+      } catch (e) {
+        console.error('Bonus config load failed:', e);
+        bonusConfigState = { sections: [], percent: 0 };
+      }
+      document.getElementById('bonusPercentInput').value = bonusConfigState.percent || 0;
+      renderBonusSectionsList();
+
+      document.getElementById('bonusAddBtn').addEventListener('click', () => {
+        const inp = document.getElementById('bonusNewSection');
+        const name = inp.value.trim();
+        if (!name) return;
+        if (bonusConfigState.sections.includes(name)) {
+          alert(`"${name}" is already a section.`);
+          return;
+        }
+        bonusConfigState.sections.push(name);
+        inp.value = '';
+        renderBonusSectionsList();
+      });
+      document.getElementById('bonusNewSection').addEventListener('keypress', e => {
+        if (e.key === 'Enter') document.getElementById('bonusAddBtn').click();
+      });
+
+      document.getElementById('bonusSaveBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('bonusSaveBtn');
+        const msg = document.getElementById('bonusSaveMsg');
+        const pct = parseFloat(document.getElementById('bonusPercentInput').value);
+        if (!Number.isFinite(pct) || pct < 0) {
+          msg.textContent = '✗ Enter a valid percent (0 or higher).';
+          msg.className = 'text-sm text-red-600';
+          return;
+        }
+        bonusConfigState.percent = pct;
+        btn.disabled = true;
+        const orig = btn.textContent;
+        btn.textContent = 'Saving…';
+        try {
+          const saved = await setBonusConfig(bonusConfigState);
+          bonusConfigState = saved;
+          renderBonusSectionsList();
+          msg.textContent = '✓ Saved.';
+          msg.className = 'text-sm text-green-600';
+          setTimeout(() => { msg.textContent = ''; }, 3000);
+        } catch (e) {
+          msg.textContent = '✗ ' + e.message;
+          msg.className = 'text-sm text-red-600';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = orig;
+        }
+      });
+    }
+
+    function renderBonusSectionsList() {
+      const el = document.getElementById('bonusSectionsList');
+      if (bonusConfigState.sections.length === 0) {
+        el.innerHTML = '<p class="text-xs text-gray-400 italic">No sections yet — add one below.</p>';
+        return;
+      }
+      el.innerHTML = bonusConfigState.sections.map((name, i) => `
+        <div class="flex items-center gap-2 p-2 hover:bg-yellow-50 rounded-lg">
+          <span class="flex-1 text-sm text-gray-700 font-semibold">${name}</span>
+          <button class="bonus-remove-btn text-red-500 hover:text-red-700 text-sm" data-idx="${i}">🗑 Remove</button>
+        </div>
+      `).join('');
+      el.querySelectorAll('.bonus-remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          bonusConfigState.sections.splice(idx, 1);
+          renderBonusSectionsList();
+        });
+      });
+    }
+
+    // ===== BONUS INCENTIVE TRACKER =====
+    function fmtRupeesShort(n) {
+      return '₹ ' + (Number.isFinite(n) ? n.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '0');
+    }
+
+    function initBonusIncentive() {
+      const dailyBtn = document.getElementById('incDailyBtn');
+      const monthlyBtn = document.getElementById('incMonthlyBtn');
+      const dailyPanel = document.getElementById('incDaily');
+      const monthlyPanel = document.getElementById('incMonthly');
+      function activate(which) {
+        if (which === 'daily') {
+          dailyPanel.classList.remove('hidden');
+          monthlyPanel.classList.add('hidden');
+          dailyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold bg-white text-green-600 shadow-sm';
+          monthlyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800';
+        } else {
+          dailyPanel.classList.add('hidden');
+          monthlyPanel.classList.remove('hidden');
+          monthlyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold bg-white text-green-600 shadow-sm';
+          dailyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800';
+        }
+      }
+      dailyBtn.addEventListener('click', () => activate('daily'));
+      monthlyBtn.addEventListener('click', () => activate('monthly'));
+
+      const monthPicker = document.getElementById('incMonthPicker');
+      const ym = currentYyyymm();
+      monthPicker.value = ym;
+      monthPicker.addEventListener('change', () => loadIncMonthly(monthPicker.value));
+      document.getElementById('incExportBtn').addEventListener('click', () => exportIncMonth(monthPicker.value));
+
+      loadIncDaily(todayStr());
+      loadIncMonthly(ym);
+    }
+
+    async function loadIncDaily(date) {
+      const container = document.getElementById('incDailyContent');
+      try {
+        const data = await getChecklistByDate('closing', date);
+        if (!data || !data.bonusSales) {
+          container.innerHTML = '<p class="text-gray-400 italic text-sm">No bonus sales recorded for this date.</p>';
+          return;
+        }
+        const sales = data.bonusSales;
+        const pct = Number(data.bonusPercent) || 0;
+        let total = 0;
+        let html = `<table class="w-full text-sm mb-3">
+          <thead><tr class="text-left text-gray-500 border-b">
+            <th class="py-2">Section</th>
+            <th class="py-2 text-right">Qty</th>
+            <th class="py-2 text-right">Amount</th>
+          </tr></thead><tbody>`;
+        Object.entries(sales).forEach(([name, v]) => {
+          const amt = Number(v.amount) || 0;
+          total += amt;
+          html += `<tr class="border-b border-gray-50">
+            <td class="py-2 font-semibold">${name}</td>
+            <td class="py-2 text-right">${Number(v.qty) || 0}</td>
+            <td class="py-2 text-right">${fmtRupeesShort(amt)}</td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+        const dayInc = (total * pct) / 100;
+        const each = dayInc / 2;
+        html += `<div class="grid grid-cols-3 gap-3 mt-3">
+          <div class="bg-yellow-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Bonus sales</div>
+            <div class="font-bold text-yellow-700">${fmtRupeesShort(total)}</div>
+          </div>
+          <div class="bg-blue-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">% applied</div>
+            <div class="font-bold text-blue-700">${pct}%</div>
+          </div>
+          <div class="bg-green-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Day incentive</div>
+            <div class="font-bold text-green-700">${fmtRupeesShort(dayInc)}</div>
+            <div class="text-xs text-gray-500 mt-1">(${fmtRupeesShort(each)} each)</div>
+          </div>
+        </div>`;
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Error: ${e.message}</p>`;
+      }
+    }
+
+    let lastIncMonth = null; // { yyyymm, result } cache for export
+
+    async function loadIncMonthly(yyyymm) {
+      const container = document.getElementById('incMonthlyContent');
+      container.innerHTML = '<p class="text-sm text-gray-500">Loading…</p>';
+      try {
+        const result = await getMonthlyIncentive(yyyymm);
+        lastIncMonth = { yyyymm, result };
+
+        let html = `<div class="grid grid-cols-3 gap-3 mb-4">
+          <div class="bg-yellow-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Month bonus sales</div>
+            <div class="font-bold text-yellow-700">${fmtRupeesShort(result.monthBonusTotal)}</div>
+          </div>
+          <div class="bg-blue-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Total incentive</div>
+            <div class="font-bold text-blue-700">${fmtRupeesShort(result.monthIncentive)}</div>
+          </div>
+          <div class="bg-green-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Per worker share</div>
+            <div class="font-bold text-green-700">${fmtRupeesShort(result.perWorkerShare)}</div>
+          </div>
+        </div>`;
+
+        if (result.days.length === 0) {
+          html += '<p class="text-gray-400 italic text-sm">No bonus sales recorded for this month yet.</p>';
+          container.innerHTML = html;
+          return;
+        }
+
+        // Build a sorted list of all sections seen this month for table columns
+        const allSections = new Set();
+        result.days.forEach(d => Object.keys(d.sales || {}).forEach(s => allSections.add(s)));
+        const sectionList = Array.from(allSections);
+
+        let runningInc = 0;
+        let runningEach = 0;
+        html += `<div class="overflow-x-auto"><table class="w-full text-sm">
+          <thead><tr class="text-left text-gray-500 border-b">
+            <th class="py-2">Date</th>
+            ${sectionList.map(s => `<th class="py-2 text-right">${s}</th>`).join('')}
+            <th class="py-2 text-right">Day Total</th>
+            <th class="py-2 text-right">%</th>
+            <th class="py-2 text-right">Day Incentive</th>
+            <th class="py-2 text-right">Each</th>
+            <th class="py-2 text-right">Running (each)</th>
+          </tr></thead><tbody>`;
+        result.days.forEach(d => {
+          runningInc += d.dayIncentive;
+          runningEach = runningInc / 2;
+          html += `<tr class="border-b border-gray-50">
+            <td class="py-2 font-semibold">${d.date}</td>
+            ${sectionList.map(s => {
+              const amt = d.sales && d.sales[s] ? (Number(d.sales[s].amount) || 0) : 0;
+              return `<td class="py-2 text-right text-gray-600">${amt > 0 ? fmtRupeesShort(amt) : '—'}</td>`;
+            }).join('')}
+            <td class="py-2 text-right font-semibold">${fmtRupeesShort(d.bonusTotal)}</td>
+            <td class="py-2 text-right text-blue-700">${d.bonusPercent}%</td>
+            <td class="py-2 text-right text-green-700">${fmtRupeesShort(d.dayIncentive)}</td>
+            <td class="py-2 text-right text-green-700">${fmtRupeesShort(d.dayPerWorker)}</td>
+            <td class="py-2 text-right font-bold text-green-800">${fmtRupeesShort(runningEach)}</td>
+          </tr>`;
+        });
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Error: ${e.message}</p>`;
+      }
+    }
+
+    function exportIncMonth(yyyymm) {
+      if (!lastIncMonth || lastIncMonth.yyyymm !== yyyymm) {
+        alert('Load the month first.');
+        return;
+      }
+      const r = lastIncMonth.result;
+      const allSections = new Set();
+      r.days.forEach(d => Object.keys(d.sales || {}).forEach(s => allSections.add(s)));
+      const sectionList = Array.from(allSections);
+
+      let csv = 'Date,' + sectionList.map(s => `${s} Qty,${s} Amount`).join(',') + ',Day Total,Percent,Day Incentive,Each Worker,Running (each)\n';
+      let runEach = 0;
+      r.days.forEach(d => {
+        runEach += d.dayPerWorker;
+        const cols = sectionList.map(s => {
+          const v = d.sales && d.sales[s] ? d.sales[s] : null;
+          return v ? `${Number(v.qty) || 0},${Number(v.amount) || 0}` : `0,0`;
+        }).join(',');
+        csv += `"${d.date}",${cols},${d.bonusTotal},${d.bonusPercent},${d.dayIncentive},${d.dayPerWorker},${runEach}\n`;
+      });
+      csv += `Month Total,${sectionList.map(() => ',').join('')}${r.monthBonusTotal},,${r.monthIncentive},${r.perWorkerShare},\n`;
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bonus-incentive-${yyyymm}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     }
