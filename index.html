@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="bg-gradient-to-br from-pink-50 via-white to-amber-50 min-h-screen">
-  <div class="max-w-4xl mx-auto px-4 py-10">
+  <div class="max-w-6xl mx-auto px-4 py-10">
     <!-- Header -->
     <header class="text-center mb-10">
       <div class="inline-block bg-white rounded-full px-6 py-2 shadow-sm mb-4">
@@ -19,33 +19,40 @@
     </header>
 
     <!-- Action Cards -->
-    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-      <a href="attendance.html" data-card="attendance" class="group block bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-amber-400">
-        <div class="text-5xl mb-4">🕒</div>
-        <h2 class="text-xl font-bold text-gray-800 mb-2">Attendance</h2>
-        <p class="text-sm text-gray-500">Check in / check out for the day</p>
-        <div class="mt-4 text-amber-600 font-semibold group-hover:underline">Open →</div>
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-10">
+      <a href="attendance.html" data-card="attendance" class="group block bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-amber-400">
+        <div class="text-4xl mb-3">🕒</div>
+        <h2 class="text-lg font-bold text-gray-800 mb-1">Attendance</h2>
+        <p class="text-sm text-gray-500">Check in / check out</p>
+        <div class="mt-3 text-amber-600 font-semibold text-sm group-hover:underline">Open →</div>
       </a>
 
-      <a href="opening.html" data-card="opening" class="group block bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-green-400">
-        <div class="text-5xl mb-4">🌅</div>
-        <h2 class="text-xl font-bold text-gray-800 mb-2">Opening Checklist</h2>
-        <p class="text-sm text-gray-500">Tasks to do when opening the shop</p>
-        <div class="mt-4 text-green-600 font-semibold group-hover:underline">Open →</div>
+      <a href="opening.html" data-card="opening" class="group block bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-green-400">
+        <div class="text-4xl mb-3">🌅</div>
+        <h2 class="text-lg font-bold text-gray-800 mb-1">Opening Checklist</h2>
+        <p class="text-sm text-gray-500">Tasks for shop opening</p>
+        <div class="mt-3 text-green-600 font-semibold text-sm group-hover:underline">Open →</div>
       </a>
 
-      <a href="closing.html" data-card="closing" class="group block bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-blue-400">
-        <div class="text-5xl mb-4">🌙</div>
-        <h2 class="text-xl font-bold text-gray-800 mb-2">Closing Checklist</h2>
-        <p class="text-sm text-gray-500">Tasks to do when closing the shop</p>
-        <div class="mt-4 text-blue-600 font-semibold group-hover:underline">Open →</div>
+      <a href="closing.html" data-card="closing" class="group block bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-blue-400">
+        <div class="text-4xl mb-3">🌙</div>
+        <h2 class="text-lg font-bold text-gray-800 mb-1">Closing Checklist</h2>
+        <p class="text-sm text-gray-500">Tasks for shop closing</p>
+        <div class="mt-3 text-blue-600 font-semibold text-sm group-hover:underline">Open →</div>
       </a>
 
-      <a href="inventory.html" data-card="inventory" class="group block bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-pink-400">
-        <div class="text-5xl mb-4">📦</div>
-        <h2 class="text-xl font-bold text-gray-800 mb-2">Inventory Update</h2>
-        <p class="text-sm text-gray-500">Update current stock quantities</p>
-        <div class="mt-4 text-pink-600 font-semibold group-hover:underline">Open →</div>
+      <a href="inventory.html" data-card="inventory" class="group block bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-pink-400">
+        <div class="text-4xl mb-3">📦</div>
+        <h2 class="text-lg font-bold text-gray-800 mb-1">Inventory Update</h2>
+        <p class="text-sm text-gray-500">Update stock quantities</p>
+        <div class="mt-3 text-pink-600 font-semibold text-sm group-hover:underline">Open →</div>
+      </a>
+
+      <a href="walkin.html" data-card="walkin" class="group block bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border-t-4 border-emerald-400">
+        <div class="text-4xl mb-3">💵</div>
+        <h2 class="text-lg font-bold text-gray-800 mb-1">Walk-in Sales</h2>
+        <p class="text-sm text-gray-500">Log bills and payments</p>
+        <div class="mt-3 text-emerald-600 font-semibold text-sm group-hover:underline">Open →</div>
       </a>
     </div>
 
@@ -94,7 +101,8 @@
     const cardLabels = {
       opening: 'Open Opening Checklist',
       closing: 'Open Closing Checklist',
-      inventory: 'Open Inventory Update'
+      inventory: 'Open Inventory Update',
+      walkin: 'Open Walk-in Sales'
     };
     document.querySelectorAll('a[data-card]').forEach(card => {
       const target = card.dataset.card;

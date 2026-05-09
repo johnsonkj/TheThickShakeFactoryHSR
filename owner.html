@@ -96,6 +96,31 @@
       </div>
     </div>
 
+    <!-- Section: Walk-in Sales -->
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-emerald-400">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
+        <h2 class="text-lg font-bold text-gray-800">💵 Walk-in Sales</h2>
+        <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
+          <button id="walkinDailyBtn" class="px-3 py-1 rounded-md text-sm font-semibold bg-white text-emerald-600 shadow-sm">Daily</button>
+          <button id="walkinMonthlyBtn" class="px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800">Monthly</button>
+        </div>
+      </div>
+
+      <div id="walkinDaily">
+        <p class="text-xs text-gray-500 mb-3">For the date selected above.</p>
+        <div id="walkinDailyContent">Loading…</div>
+      </div>
+
+      <div id="walkinMonthly" class="hidden">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <label class="text-sm text-gray-700 font-semibold">Month:</label>
+          <input id="walkinMonthPicker" type="month" class="px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-400 focus:outline-none" />
+          <button id="walkinExportBtn" class="ml-auto px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold">Export CSV</button>
+        </div>
+        <div id="walkinMonthlyContent">Loading…</div>
+      </div>
+    </div>
+
     <!-- Section: Today's checklists -->
     <div class="grid md:grid-cols-2 gap-6 mb-6">
       <div class="bg-white rounded-2xl p-6 shadow-md border-l-4 border-green-400">
@@ -158,7 +183,8 @@
       getChecklistByDate, getInventoryByDate, getLatestInventory, getRecentActivity,
       getWorkerPasswords, setWorkerPassword,
       getAttendanceForDate, getAttendanceForMonth,
-      getInventoryThresholds, setInventoryThresholdsBatch
+      getInventoryThresholds, setInventoryThresholdsBatch,
+      getWalkinSalesByDate, getWalkinSalesByMonth, deleteWalkinSale
     } from './app.js';
     import { INVENTORY } from './inventory-data.js';
     import { computeTotalMs, formatDuration, formatTime, buildSessions, renderEventList } from './attendance-shared.js';
@@ -228,6 +254,7 @@
       initAttendance();
       initWorkerPasswords();
       initThresholdEditor();
+      initWalkinSales();
     }
 
     async function loadForDate(date) {
@@ -251,6 +278,9 @@
 
       // Attendance (daily) — driven by the same date picker
       loadAttendanceDaily(date);
+
+      // Walk-in sales (daily) — driven by the same date picker
+      loadWalkinDaily(date);
     }
 
     function renderChecklist(type, data, total) {
@@ -549,6 +579,223 @@
       const a = document.createElement('a');
       a.href = url;
       a.download = `attendance-${yyyymm}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ===== WALK-IN SALES =====
+    function fmtRupees(n) { return '₹ ' + (n || 0).toLocaleString('en-IN'); }
+    function timeOf(ts) {
+      return new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    }
+    function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+
+    function initWalkinSales() {
+      const dailyBtn = document.getElementById('walkinDailyBtn');
+      const monthlyBtn = document.getElementById('walkinMonthlyBtn');
+      const dailyPanel = document.getElementById('walkinDaily');
+      const monthlyPanel = document.getElementById('walkinMonthly');
+
+      function activate(which) {
+        if (which === 'daily') {
+          dailyPanel.classList.remove('hidden');
+          monthlyPanel.classList.add('hidden');
+          dailyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold bg-white text-emerald-600 shadow-sm';
+          monthlyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800';
+        } else {
+          dailyPanel.classList.add('hidden');
+          monthlyPanel.classList.remove('hidden');
+          monthlyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold bg-white text-emerald-600 shadow-sm';
+          dailyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800';
+        }
+      }
+      dailyBtn.addEventListener('click', () => activate('daily'));
+      monthlyBtn.addEventListener('click', () => activate('monthly'));
+
+      const monthPicker = document.getElementById('walkinMonthPicker');
+      const now = new Date();
+      const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      monthPicker.value = ym;
+      monthPicker.addEventListener('change', () => loadWalkinMonthly(monthPicker.value));
+      document.getElementById('walkinExportBtn').addEventListener('click', () => exportWalkinMonth(monthPicker.value));
+
+      loadWalkinMonthly(ym);
+    }
+
+    let lastWalkinMonth = null; // { yyyymm, entries } cache for export
+
+    async function loadWalkinDaily(date) {
+      const container = document.getElementById('walkinDailyContent');
+      try {
+        const entries = await getWalkinSalesByDate(date);
+        container.innerHTML = renderWalkinTable(entries, true);
+        wireDeleteButtons(container, () => loadWalkinDaily(date));
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Error: ${e.message}</p>`;
+      }
+    }
+
+    function renderWalkinTable(entries, daily) {
+      const upi = entries.filter(e => e.method === 'upi').reduce((s, e) => s + e.amount, 0);
+      const cash = entries.filter(e => e.method === 'cash').reduce((s, e) => s + e.amount, 0);
+      const total = upi + cash;
+
+      let html = `
+        <div class="grid grid-cols-3 gap-3 mb-4">
+          <div class="bg-emerald-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">UPI</div>
+            <div class="font-bold text-emerald-700">${fmtRupees(upi)}</div>
+          </div>
+          <div class="bg-amber-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Cash</div>
+            <div class="font-bold text-amber-700">${fmtRupees(cash)}</div>
+          </div>
+          <div class="bg-gray-100 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Total (${entries.length} bills)</div>
+            <div class="font-bold text-gray-800">${fmtRupees(total)}</div>
+          </div>
+        </div>
+      `;
+
+      if (entries.length === 0) {
+        html += '<p class="text-gray-400 italic text-sm">No entries.</p>';
+        return html;
+      }
+
+      html += `<div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead><tr class="text-left text-gray-500 border-b">
+          ${daily ? '' : '<th class="py-2">Date</th>'}
+          <th class="py-2">Time</th>
+          <th class="py-2">Bill No.</th>
+          <th class="py-2 text-right">Amount</th>
+          <th class="py-2">Method</th>
+          <th class="py-2">Worker</th>
+          <th class="py-2"></th>
+        </tr></thead><tbody>`;
+      entries.forEach(e => {
+        const methodBadge = e.method === 'upi'
+          ? '<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">UPI</span>'
+          : '<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">Cash</span>';
+        html += `<tr class="border-b border-gray-50 hover:bg-gray-50">
+          ${daily ? '' : `<td class="py-2 text-gray-500 text-xs">${e.date}</td>`}
+          <td class="py-2 text-gray-500">${timeOf(e.ts)}</td>
+          <td class="py-2 font-semibold">${e.billNo}</td>
+          <td class="py-2 text-right font-semibold">${fmtRupees(e.amount)}</td>
+          <td class="py-2">${methodBadge}</td>
+          <td class="py-2 text-gray-600">${capitalize(e.worker)}</td>
+          <td class="py-2 text-right">
+            <button class="walkin-del-btn text-red-500 hover:text-red-700 text-xs" data-bill="${e.billNo}">🗑</button>
+          </td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+      return html;
+    }
+
+    function wireDeleteButtons(scope, onDone) {
+      scope.querySelectorAll('.walkin-del-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const billNo = btn.dataset.bill;
+          if (!confirm(`Delete bill ${billNo}? This can't be undone.`)) return;
+          try {
+            await deleteWalkinSale(billNo);
+            onDone();
+          } catch (e) {
+            alert('Delete failed: ' + e.message);
+          }
+        });
+      });
+    }
+
+    async function loadWalkinMonthly(yyyymm) {
+      const container = document.getElementById('walkinMonthlyContent');
+      container.innerHTML = '<p class="text-sm text-gray-500">Loading…</p>';
+      try {
+        const entries = await getWalkinSalesByMonth(yyyymm);
+        lastWalkinMonth = { yyyymm, entries };
+
+        const upi = entries.filter(e => e.method === 'upi').reduce((s, e) => s + e.amount, 0);
+        const cash = entries.filter(e => e.method === 'cash').reduce((s, e) => s + e.amount, 0);
+        const total = upi + cash;
+
+        // Group by date
+        const byDate = {};
+        entries.forEach(e => {
+          if (!byDate[e.date]) byDate[e.date] = [];
+          byDate[e.date].push(e);
+        });
+        const dates = Object.keys(byDate).sort();
+
+        let html = `
+          <div class="grid grid-cols-3 gap-3 mb-4">
+            <div class="bg-emerald-50 rounded-lg p-3 text-center">
+              <div class="text-xs text-gray-500">UPI total</div>
+              <div class="font-bold text-emerald-700">${fmtRupees(upi)}</div>
+            </div>
+            <div class="bg-amber-50 rounded-lg p-3 text-center">
+              <div class="text-xs text-gray-500">Cash total</div>
+              <div class="font-bold text-amber-700">${fmtRupees(cash)}</div>
+            </div>
+            <div class="bg-gray-100 rounded-lg p-3 text-center">
+              <div class="text-xs text-gray-500">Month total (${entries.length} bills)</div>
+              <div class="font-bold text-gray-800">${fmtRupees(total)}</div>
+            </div>
+          </div>
+        `;
+
+        if (dates.length === 0) {
+          html += '<p class="text-gray-400 italic text-sm">No sales recorded this month.</p>';
+          container.innerHTML = html;
+          return;
+        }
+
+        html += `<table class="w-full text-sm mb-4">
+          <thead><tr class="text-left text-gray-500 border-b">
+            <th class="py-2">Date</th>
+            <th class="py-2 text-right">Bills</th>
+            <th class="py-2 text-right">UPI</th>
+            <th class="py-2 text-right">Cash</th>
+            <th class="py-2 text-right">Total</th>
+          </tr></thead><tbody>`;
+        dates.forEach(date => {
+          const dayEntries = byDate[date];
+          const dUpi = dayEntries.filter(e => e.method === 'upi').reduce((s, e) => s + e.amount, 0);
+          const dCash = dayEntries.filter(e => e.method === 'cash').reduce((s, e) => s + e.amount, 0);
+          html += `<tr class="border-b border-gray-50">
+            <td class="py-2 font-semibold">${date}</td>
+            <td class="py-2 text-right">${dayEntries.length}</td>
+            <td class="py-2 text-right text-emerald-700">${fmtRupees(dUpi)}</td>
+            <td class="py-2 text-right text-amber-700">${fmtRupees(dCash)}</td>
+            <td class="py-2 text-right font-semibold">${fmtRupees(dUpi + dCash)}</td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+
+        html += '<details class="text-sm"><summary class="cursor-pointer font-semibold text-gray-700 mb-2">Show all bills</summary>';
+        html += `<div class="mt-2">${renderWalkinTable(entries, false)}</div></details>`;
+
+        container.innerHTML = html;
+        wireDeleteButtons(container, () => loadWalkinMonthly(yyyymm));
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Error: ${e.message}</p>`;
+      }
+    }
+
+    function exportWalkinMonth(yyyymm) {
+      if (!lastWalkinMonth || lastWalkinMonth.yyyymm !== yyyymm) {
+        alert('Load the month first.');
+        return;
+      }
+      const entries = lastWalkinMonth.entries;
+      let csv = 'Date,Time,Bill No,Amount,Method,Worker\n';
+      entries.forEach(e => {
+        csv += `"${e.date}","${timeOf(e.ts)}","${e.billNo}",${e.amount},"${e.method.toUpperCase()}","${capitalize(e.worker)}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `walkin-sales-${yyyymm}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     }
