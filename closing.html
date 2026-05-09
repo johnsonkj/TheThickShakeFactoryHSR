@@ -31,6 +31,24 @@
       <ul id="checklistItems" class="space-y-3"></ul>
     </div>
 
+    <!-- Bonus sales section (shown only if admin has configured sections) -->
+    <div id="bonusSection" class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-yellow-400 hidden">
+      <h2 class="text-lg font-bold text-gray-800 mb-1">💰 Today's Sales (Bonus)</h2>
+      <p class="text-xs text-gray-500 mb-4">Enter today's quantity sold and total amount for each section.</p>
+      <div id="bonusList"></div>
+
+      <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-3">
+        <div class="bg-yellow-50 rounded-lg p-3 text-center">
+          <div class="text-xs text-gray-500">Today's bonus sales</div>
+          <div class="font-bold text-yellow-700" id="todayBonusTotal">₹ 0</div>
+        </div>
+        <div class="bg-green-50 rounded-lg p-3 text-center">
+          <div class="text-xs text-gray-500">Today's incentive</div>
+          <div class="font-bold text-green-700"><span id="todayIncentivePerWorker">₹ 0</span> each</div>
+        </div>
+      </div>
+    </div>
+
     <button id="submitBtn" class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white font-bold py-4 rounded-2xl shadow-md transition-all">
       Save Closing Checklist
     </button>
@@ -39,7 +57,7 @@
   </div>
 
   <script type="module">
-    import { saveChecklist, getTodayChecklist } from './app.js';
+    import { saveChecklist, getTodayChecklist, getBonusConfig } from './app.js';
 
     // ===== Auth gate =====
     const _auth = JSON.parse(sessionStorage.getItem('tsf_auth') || '{}');
@@ -92,6 +110,86 @@
       cb.addEventListener('change', updateProgress);
     });
 
+    // ===== Bonus sales section =====
+    let loadedBonusConfig = null;          // last-known config from Firestore
+    const bonusFormState = {};             // { [sectionName]: { qty, amount } }
+
+    function renderBonusSection() {
+      const sec = loadedBonusConfig;
+      const container = document.getElementById('bonusSection');
+      const list = document.getElementById('bonusList');
+
+      if (!sec || !sec.sections || sec.sections.length === 0) {
+        container.classList.add('hidden');
+        list.innerHTML = '';
+        updateLiveIncentive();
+        return;
+      }
+      container.classList.remove('hidden');
+
+      // Drop entries for sections that no longer exist
+      Object.keys(bonusFormState).forEach(k => {
+        if (!sec.sections.includes(k)) delete bonusFormState[k];
+      });
+
+      list.innerHTML = sec.sections.map(name => {
+        const cur = bonusFormState[name] || { qty: '', amount: '' };
+        return `
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 items-center mb-3">
+            <label class="text-sm font-semibold text-gray-700">${name}</label>
+            <input type="number" min="0" step="1" placeholder="Qty"
+                   data-bonus-qty="${name}" value="${cur.qty}"
+                   class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-yellow-400 focus:outline-none" />
+            <input type="number" min="0" step="1" placeholder="Amount ₹"
+                   data-bonus-amt="${name}" value="${cur.amount}"
+                   class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-yellow-400 focus:outline-none" />
+          </div>
+        `;
+      }).join('');
+
+      list.querySelectorAll('input[data-bonus-qty]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const name = inp.dataset.bonusQty;
+          if (!bonusFormState[name]) bonusFormState[name] = { qty: '', amount: '' };
+          bonusFormState[name].qty = inp.value;
+          updateLiveIncentive();
+        });
+      });
+      list.querySelectorAll('input[data-bonus-amt]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const name = inp.dataset.bonusAmt;
+          if (!bonusFormState[name]) bonusFormState[name] = { qty: '', amount: '' };
+          bonusFormState[name].amount = inp.value;
+          updateLiveIncentive();
+        });
+      });
+
+      updateLiveIncentive();
+    }
+
+    function updateLiveIncentive() {
+      const sec = loadedBonusConfig || { percent: 0 };
+      let total = 0;
+      Object.values(bonusFormState).forEach(v => { total += Number(v.amount) || 0; });
+      const incentive = (total * (Number(sec.percent) || 0)) / 100;
+      const totEl = document.getElementById('todayBonusTotal');
+      const incEl = document.getElementById('todayIncentivePerWorker');
+      if (totEl) totEl.textContent = '₹ ' + total.toLocaleString('en-IN');
+      if (incEl) incEl.textContent = '₹ ' + (incentive / 2).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    }
+
+    async function loadBonusConfig() {
+      try {
+        loadedBonusConfig = await getBonusConfig();
+      } catch (e) {
+        console.error('Bonus config load failed:', e);
+        loadedBonusConfig = { sections: [], percent: 0 };
+      }
+      renderBonusSection();
+    }
+    loadBonusConfig();
+
+    // ===== Pre-fill checklist + bonus values for today =====
     getTodayChecklist('closing').then(data => {
       if (data && data.tasks) {
         data.tasks.forEach((checked, i) => {
@@ -103,6 +201,16 @@
           document.getElementById('message').innerHTML = '<p class="text-sm text-blue-600">✓ Already saved today. You can update and save again.</p>';
         }
       }
+      if (data && data.bonusSales && typeof data.bonusSales === 'object') {
+        Object.entries(data.bonusSales).forEach(([name, val]) => {
+          bonusFormState[name] = {
+            qty: val.qty != null ? String(val.qty) : '',
+            amount: val.amount != null ? String(val.amount) : '',
+          };
+        });
+        // Re-render once config is also loaded
+        if (loadedBonusConfig) renderBonusSection();
+      }
     }).catch(err => console.error(err));
 
     document.getElementById('submitBtn').addEventListener('click', async () => {
@@ -110,17 +218,65 @@
       btn.disabled = true;
       btn.textContent = 'Saving...';
 
+      // ===== Freshness check on bonus config =====
+      // If admin changed sections since the page loaded, re-render and abort save.
+      try {
+        const fresh = await getBonusConfig();
+        const oldList = JSON.stringify((loadedBonusConfig?.sections || []).slice().sort());
+        const newList = JSON.stringify((fresh?.sections || []).slice().sort());
+        if (oldList !== newList) {
+          loadedBonusConfig = fresh;
+          renderBonusSection();
+          alert('Bonus sections were updated by the admin. Please review the highlighted section and save again.');
+          btn.textContent = 'Save Closing Checklist';
+          btn.disabled = false;
+          return;
+        }
+        // Always pick up latest percent (snapshot at save-time)
+        loadedBonusConfig = fresh;
+      } catch (e) {
+        console.error('Bonus config refresh failed; proceeding with last-known config.', e);
+      }
+
       const checked = Array.from(document.querySelectorAll('#checklistItems input')).map(cb => cb.checked);
       const allDone = checked.every(c => c);
+
+      // Build bonusSales (only for currently-active sections)
+      const bonusSales = {};
+      const sections = (loadedBonusConfig?.sections) || [];
+      sections.forEach(name => {
+        const v = bonusFormState[name] || {};
+        bonusSales[name] = {
+          qty: Number.isFinite(Number(v.qty)) ? Number(v.qty) : 0,
+          amount: Number.isFinite(Number(v.amount)) ? Number(v.amount) : 0,
+        };
+      });
+      const bonusPercent = Number(loadedBonusConfig?.percent) || 0;
 
       try {
         await saveChecklist('closing', {
           tasks: checked,
           completed: allDone,
           worker: worker,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          bonusSales,
+          bonusPercent,
         });
-        document.getElementById('message').innerHTML = `<p class="text-blue-600 font-semibold">✓ Saved successfully!</p>`;
+
+        // Live recompute the just-saved incentive (so the message reflects what's stored)
+        const totalAmt = Object.values(bonusSales).reduce((s, x) => s + (x.amount || 0), 0);
+        const dayInc = (totalAmt * bonusPercent) / 100;
+        const eachShare = dayInc / 2;
+
+        let msg = `<p class="text-blue-600 font-semibold">✓ Saved successfully!</p>`;
+        if (sections.length > 0 && totalAmt > 0) {
+          msg += `<p class="text-sm text-green-700 mt-1">Today's incentive: <span class="font-bold">₹ ${eachShare.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span> each.</p>`;
+        }
+        document.getElementById('message').innerHTML = msg;
+
+        // Bust home-page incentive cache so the banner refreshes on next visit
+        sessionStorage.removeItem('tsf_incentive_cache');
+
         btn.textContent = 'Saved ✓';
         setTimeout(() => { btn.textContent = 'Save Closing Checklist'; btn.disabled = false; }, 2000);
       } catch (err) {
