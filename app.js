@@ -12,6 +12,7 @@ import {
   setDoc,
   getDoc,
   getDocs,
+  deleteDoc,
   query,
   orderBy,
   limit,
@@ -97,6 +98,63 @@ export async function getLatestInventory() {
   const snap = await getDocs(q);
   if (snap.empty) return null;
   return snap.docs[0].data();
+}
+
+// =============================================================================
+//  WALK-IN SALES  (walkin_sales/{billNo})
+//  -----------------------------------------------------------------------------
+//  Doc id = bill number (globally unique, e.g. "HSR3241").
+//  Body: { billNo, amount, method ("upi"|"cash"), worker, date, ts }
+// =============================================================================
+
+export async function addWalkinSale(entry) {
+  const billNo = String(entry.billNo || '').trim();
+  if (!billNo) throw new Error('Bill number required');
+  if (!Number.isFinite(entry.amount) || entry.amount <= 0) throw new Error('Amount must be greater than 0');
+  if (entry.method !== 'upi' && entry.method !== 'cash') throw new Error('Pick UPI or Cash');
+  if (!entry.worker) throw new Error('Worker required');
+  if (!entry.date) throw new Error('Date required');
+
+  const ref = doc(db, "walkin_sales", billNo);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const ex = snap.data();
+    throw new Error(`Bill ${billNo} already exists (${ex.date}, ₹${ex.amount}).`);
+  }
+  const payload = {
+    billNo,
+    amount: Math.round(entry.amount), // whole rupees
+    method: entry.method,
+    worker: entry.worker,
+    date: entry.date,
+    ts: entry.ts || new Date().toISOString(),
+  };
+  await setDoc(ref, payload);
+  return payload;
+}
+
+export async function getWalkinSalesByDate(date) {
+  const q = query(collection(db, "walkin_sales"), where("date", "==", date));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => d.data()).sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+}
+
+export async function getWalkinSalesByMonth(yyyymm) {
+  const [y, m] = yyyymm.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const start = `${yyyymm}-01`;
+  const end = `${yyyymm}-${String(lastDay).padStart(2, '0')}`;
+  const q = query(
+    collection(db, "walkin_sales"),
+    where("date", ">=", start),
+    where("date", "<=", end)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => d.data()).sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+}
+
+export async function deleteWalkinSale(billNo) {
+  await deleteDoc(doc(db, "walkin_sales", billNo));
 }
 
 // =============================================================================
