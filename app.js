@@ -12,6 +12,7 @@ import {
   setDoc,
   getDoc,
   getDocs,
+  addDoc,
   deleteDoc,
   query,
   orderBy,
@@ -253,6 +254,62 @@ export async function getMonthlyIncentive(yyyymm) {
     monthIncentive,
     perWorkerShare: monthIncentive / 2,
   };
+}
+
+// =============================================================================
+//  EXPENSES  (expenses/{auto-id})
+//  -----------------------------------------------------------------------------
+//  Workers log purchases made for the shop (lemon, batteries, etc.). One entry
+//  per bill — `items` is the parsed list of item names; `amount` is the bill
+//  total. Bill numbers from external vendors can collide, so we use auto-ids.
+// =============================================================================
+
+export async function addExpense(entry) {
+  const billNo = String(entry.billNo || '').trim();
+  if (!billNo) throw new Error('Bill number required');
+  if (!Number.isFinite(entry.amount) || entry.amount <= 0) throw new Error('Amount must be greater than 0');
+  if (!Array.isArray(entry.items) || entry.items.length === 0) throw new Error('Enter at least one item');
+  if (!entry.worker) throw new Error('Worker required');
+  if (!entry.date) throw new Error('Date required');
+
+  const payload = {
+    billNo,
+    items: entry.items.map(s => String(s).trim()).filter(Boolean),
+    amount: Math.round(entry.amount),
+    worker: entry.worker,
+    date: entry.date,
+    ts: entry.ts || new Date().toISOString(),
+  };
+  const ref = await addDoc(collection(db, "expenses"), payload);
+  return { id: ref.id, ...payload };
+}
+
+export async function getExpensesByDate(date) {
+  const q = query(collection(db, "expenses"), where("date", "==", date));
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+}
+
+export async function getExpensesByMonth(yyyymm) {
+  const [y, m] = yyyymm.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const start = `${yyyymm}-01`;
+  const end = `${yyyymm}-${String(lastDay).padStart(2, '0')}`;
+  const q = query(
+    collection(db, "expenses"),
+    where("date", ">=", start),
+    where("date", "<=", end)
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+}
+
+export async function deleteExpense(id) {
+  await deleteDoc(doc(db, "expenses", id));
 }
 
 // =============================================================================
