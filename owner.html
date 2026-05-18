@@ -148,6 +148,31 @@
       </div>
     </div>
 
+    <!-- Section: Expenses -->
+    <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-purple-400">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
+        <h2 class="text-lg font-bold text-gray-800">🧾 Expenses</h2>
+        <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
+          <button id="expDailyBtn" class="px-3 py-1 rounded-md text-sm font-semibold bg-white text-purple-600 shadow-sm">Daily</button>
+          <button id="expMonthlyBtn" class="px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800">Monthly</button>
+        </div>
+      </div>
+
+      <div id="expDaily">
+        <p class="text-xs text-gray-500 mb-3">For the date selected above.</p>
+        <div id="expDailyContent">Loading…</div>
+      </div>
+
+      <div id="expMonthly" class="hidden">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <label class="text-sm text-gray-700 font-semibold">Month:</label>
+          <input id="expMonthPicker" type="month" class="px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-400 focus:outline-none" />
+          <button id="expExportBtn" class="ml-auto px-3 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm font-semibold">Export CSV</button>
+        </div>
+        <div id="expMonthlyContent">Loading…</div>
+      </div>
+    </div>
+
     <!-- Section: Cash -->
     <div class="bg-white rounded-2xl p-6 shadow-md mb-6 border-l-4 border-emerald-400">
       <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
@@ -266,6 +291,7 @@
         <button data-reset="checklists_closing" class="reset-btn px-3 py-2 bg-white border border-red-300 hover:bg-red-100 text-red-700 rounded-lg text-sm font-semibold text-left">🌙 Reset all closing checklists (+ incentive)</button>
         <button data-reset="inventory" class="reset-btn px-3 py-2 bg-white border border-red-300 hover:bg-red-100 text-red-700 rounded-lg text-sm font-semibold text-left">📦 Reset all inventory entries</button>
         <button data-reset="walkin_sales" class="reset-btn px-3 py-2 bg-white border border-red-300 hover:bg-red-100 text-red-700 rounded-lg text-sm font-semibold text-left">💵 Reset all walk-in sales</button>
+        <button data-reset="expenses" class="reset-btn px-3 py-2 bg-white border border-red-300 hover:bg-red-100 text-red-700 rounded-lg text-sm font-semibold text-left">🧾 Reset all expenses</button>
       </div>
 
       <div class="border-t border-red-200 pt-3">
@@ -285,6 +311,7 @@
       getInventoryThresholds, setInventoryThresholdsBatch,
       getWalkinSalesByDate, getWalkinSalesByMonth, deleteWalkinSale,
       getBonusConfig, setBonusConfig, getMonthlyIncentive, currentYyyymm,
+      getExpensesByDate, getExpensesByMonth, deleteExpense,
       clearCollection
     } from './app.js';
     import { DENOMINATIONS, computeCashTotal } from './cash-shared.js';
@@ -360,6 +387,7 @@
       initBonusConfig();
       initBonusIncentive();
       initCash();
+      initExpenses();
       initDangerZone();
     }
 
@@ -393,6 +421,9 @@
 
       // Cash (daily) — also driven by the same date picker
       loadCashDaily(date);
+
+      // Expenses (daily) — also driven by the same date picker
+      loadExpDaily(date);
     }
 
     function renderChecklist(type, data, total) {
@@ -691,6 +722,204 @@
       const a = document.createElement('a');
       a.href = url;
       a.download = `attendance-${yyyymm}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ===== EXPENSES =====
+    function fmtExpRupees(n) { return '₹ ' + (n || 0).toLocaleString('en-IN'); }
+    function expTimeOf(ts) {
+      return new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    }
+    function expCap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+    function expEscape(s) {
+      return String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function initExpenses() {
+      const dailyBtn = document.getElementById('expDailyBtn');
+      const monthlyBtn = document.getElementById('expMonthlyBtn');
+      const dailyPanel = document.getElementById('expDaily');
+      const monthlyPanel = document.getElementById('expMonthly');
+      function activate(which) {
+        if (which === 'daily') {
+          dailyPanel.classList.remove('hidden');
+          monthlyPanel.classList.add('hidden');
+          dailyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold bg-white text-purple-600 shadow-sm';
+          monthlyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800';
+        } else {
+          dailyPanel.classList.add('hidden');
+          monthlyPanel.classList.remove('hidden');
+          monthlyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold bg-white text-purple-600 shadow-sm';
+          dailyBtn.className = 'px-3 py-1 rounded-md text-sm font-semibold text-gray-600 hover:text-gray-800';
+        }
+      }
+      dailyBtn.addEventListener('click', () => activate('daily'));
+      monthlyBtn.addEventListener('click', () => activate('monthly'));
+
+      const monthPicker = document.getElementById('expMonthPicker');
+      const ym = currentYyyymm();
+      monthPicker.value = ym;
+      monthPicker.addEventListener('change', () => loadExpMonthly(monthPicker.value));
+      document.getElementById('expExportBtn').addEventListener('click', () => exportExpMonth(monthPicker.value));
+
+      loadExpMonthly(ym);
+    }
+
+    async function loadExpDaily(date) {
+      const container = document.getElementById('expDailyContent');
+      try {
+        const entries = await getExpensesByDate(date);
+        container.innerHTML = renderExpTable(entries, true);
+        wireExpDeleteButtons(container, () => loadExpDaily(date));
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Error: ${e.message}</p>`;
+      }
+    }
+
+    function renderExpTable(entries, daily) {
+      const total = entries.reduce((s, e) => s + (e.amount || 0), 0);
+
+      let html = `<div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="bg-purple-50 rounded-lg p-3 text-center">
+          <div class="text-xs text-gray-500">Bills</div>
+          <div class="font-bold text-purple-700">${entries.length}</div>
+        </div>
+        <div class="bg-gray-100 rounded-lg p-3 text-center">
+          <div class="text-xs text-gray-500">Total spent</div>
+          <div class="font-bold text-gray-800">${fmtExpRupees(total)}</div>
+        </div>
+      </div>`;
+
+      if (entries.length === 0) {
+        html += '<p class="text-gray-400 italic text-sm">No expenses recorded.</p>';
+        return html;
+      }
+
+      html += `<div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead><tr class="text-left text-gray-500 border-b">
+          ${daily ? '' : '<th class="py-2">Date</th>'}
+          <th class="py-2">Time</th>
+          <th class="py-2">Bill No.</th>
+          <th class="py-2">Items</th>
+          <th class="py-2 text-right">Amount</th>
+          <th class="py-2">By</th>
+          <th class="py-2"></th>
+        </tr></thead><tbody>`;
+      entries.forEach(e => {
+        html += `<tr class="border-b border-gray-50 hover:bg-gray-50 align-top">
+          ${daily ? '' : `<td class="py-2 text-gray-500 text-xs whitespace-nowrap">${e.date}</td>`}
+          <td class="py-2 text-gray-500 whitespace-nowrap">${expTimeOf(e.ts)}</td>
+          <td class="py-2 font-semibold whitespace-nowrap">${expEscape(e.billNo)}</td>
+          <td class="py-2 text-gray-700">${(e.items || []).map(expEscape).join(', ')}</td>
+          <td class="py-2 text-right font-semibold whitespace-nowrap">${fmtExpRupees(e.amount)}</td>
+          <td class="py-2 text-gray-600 whitespace-nowrap">${expCap(e.worker)}</td>
+          <td class="py-2 text-right">
+            <button class="exp-del-btn text-red-500 hover:text-red-700 text-xs" data-id="${e.id}" data-bill="${expEscape(e.billNo)}">🗑</button>
+          </td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+      return html;
+    }
+
+    function wireExpDeleteButtons(scope, onDone) {
+      scope.querySelectorAll('.exp-del-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          const bill = btn.dataset.bill;
+          if (!confirm(`Delete expense for bill ${bill}? This can't be undone.`)) return;
+          try {
+            await deleteExpense(id);
+            onDone();
+          } catch (e) {
+            alert('Delete failed: ' + e.message);
+          }
+        });
+      });
+    }
+
+    let lastExpMonth = null;
+
+    async function loadExpMonthly(yyyymm) {
+      const container = document.getElementById('expMonthlyContent');
+      container.innerHTML = '<p class="text-sm text-gray-500">Loading…</p>';
+      try {
+        const entries = await getExpensesByMonth(yyyymm);
+        lastExpMonth = { yyyymm, entries };
+
+        const total = entries.reduce((s, e) => s + (e.amount || 0), 0);
+
+        // Group by date
+        const byDate = {};
+        entries.forEach(e => {
+          if (!byDate[e.date]) byDate[e.date] = [];
+          byDate[e.date].push(e);
+        });
+        const dates = Object.keys(byDate).sort();
+
+        let html = `<div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="bg-purple-50 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Bills this month</div>
+            <div class="font-bold text-purple-700">${entries.length}</div>
+          </div>
+          <div class="bg-gray-100 rounded-lg p-3 text-center">
+            <div class="text-xs text-gray-500">Month total</div>
+            <div class="font-bold text-gray-800">${fmtExpRupees(total)}</div>
+          </div>
+        </div>`;
+
+        if (dates.length === 0) {
+          html += '<p class="text-gray-400 italic text-sm">No expenses recorded this month.</p>';
+          container.innerHTML = html;
+          return;
+        }
+
+        html += `<table class="w-full text-sm mb-4">
+          <thead><tr class="text-left text-gray-500 border-b">
+            <th class="py-2">Date</th>
+            <th class="py-2 text-right">Bills</th>
+            <th class="py-2 text-right">Amount</th>
+          </tr></thead><tbody>`;
+        dates.forEach(date => {
+          const dayEntries = byDate[date];
+          const dayTotal = dayEntries.reduce((s, e) => s + (e.amount || 0), 0);
+          html += `<tr class="border-b border-gray-50">
+            <td class="py-2 font-semibold">${date}</td>
+            <td class="py-2 text-right">${dayEntries.length}</td>
+            <td class="py-2 text-right font-semibold">${fmtExpRupees(dayTotal)}</td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+
+        html += '<details class="text-sm"><summary class="cursor-pointer font-semibold text-gray-700 mb-2">Show all bills</summary>';
+        html += `<div class="mt-2">${renderExpTable(entries, false)}</div></details>`;
+
+        container.innerHTML = html;
+        wireExpDeleteButtons(container, () => loadExpMonthly(yyyymm));
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-sm">Error: ${e.message}</p>`;
+      }
+    }
+
+    function exportExpMonth(yyyymm) {
+      if (!lastExpMonth || lastExpMonth.yyyymm !== yyyymm) {
+        alert('Load the month first.');
+        return;
+      }
+      const entries = lastExpMonth.entries;
+      let csv = 'Date,Time,Bill No,Items,Amount,Worker\n';
+      entries.forEach(e => {
+        const items = (e.items || []).join('; ').replace(/"/g, '""');
+        csv += `"${e.date}","${expTimeOf(e.ts)}","${e.billNo}","${items}",${e.amount},"${expCap(e.worker)}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `expenses-${yyyymm}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -1571,6 +1800,7 @@
       checklists_closing:  'closing checklists (incl. closing cash, bonus sales, incentive)',
       inventory:           'inventory entries',
       walkin_sales:        'walk-in sales',
+      expenses:            'expenses',
     };
 
     function showResetMsg(text, ok = true) {
