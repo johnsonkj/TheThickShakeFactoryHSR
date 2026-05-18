@@ -256,6 +256,27 @@ export async function getMonthlyIncentive(yyyymm) {
 }
 
 // =============================================================================
+//  ADMIN: RESET TRANSACTIONAL DATA
+//  -----------------------------------------------------------------------------
+//  Deletes every document inside the given collection. Used by the owner
+//  dashboard's "Danger Zone" reset buttons. Returns the count of deleted docs.
+//
+//  NOTE: config/* documents (passwords, thresholds, bonus_config) live in the
+//  `config` collection, which is intentionally never passed to this helper —
+//  the owner UI only exposes reset for transactional collections.
+// =============================================================================
+
+export async function clearCollection(collectionName) {
+  if (collectionName === "config") {
+    throw new Error("Cowardly refusing to clear the `config` collection from the helper.");
+  }
+  const snap = await getDocs(collection(db, collectionName));
+  if (snap.empty) return 0;
+  await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+  return snap.docs.length;
+}
+
+// =============================================================================
 //  STATUS / DASHBOARD
 // =============================================================================
 

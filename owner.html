@@ -252,6 +252,28 @@
       <h2 class="text-lg font-bold text-gray-800 mb-4">📅 Last 14 Days Activity</h2>
       <div id="recentActivity">Loading...</div>
     </div>
+
+    <!-- Section: Danger Zone — reset transactional data -->
+    <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6 shadow-md mb-6">
+      <h2 class="text-lg font-bold text-red-700 mb-2">🗑 Reset Data (Danger Zone)</h2>
+      <p class="text-xs text-red-600 mb-1"><strong>⚠ Permanently deletes worker-entered data. Cannot be undone.</strong></p>
+      <p class="text-xs text-gray-600 mb-1">Settings (worker passwords, inventory minimums, bonus configuration) are preserved.</p>
+      <p class="text-xs text-gray-600 mb-4">Resetting closing checklists automatically clears bonus &amp; incentive data (it is computed from them).</p>
+
+      <div class="grid sm:grid-cols-2 gap-2 mb-3">
+        <button data-reset="attendance" class="reset-btn px-3 py-2 bg-white border border-red-300 hover:bg-red-100 text-red-700 rounded-lg text-sm font-semibold text-left">🕒 Reset all attendance</button>
+        <button data-reset="checklists_opening" class="reset-btn px-3 py-2 bg-white border border-red-300 hover:bg-red-100 text-red-700 rounded-lg text-sm font-semibold text-left">🌅 Reset all opening checklists</button>
+        <button data-reset="checklists_closing" class="reset-btn px-3 py-2 bg-white border border-red-300 hover:bg-red-100 text-red-700 rounded-lg text-sm font-semibold text-left">🌙 Reset all closing checklists (+ incentive)</button>
+        <button data-reset="inventory" class="reset-btn px-3 py-2 bg-white border border-red-300 hover:bg-red-100 text-red-700 rounded-lg text-sm font-semibold text-left">📦 Reset all inventory entries</button>
+        <button data-reset="walkin_sales" class="reset-btn px-3 py-2 bg-white border border-red-300 hover:bg-red-100 text-red-700 rounded-lg text-sm font-semibold text-left">💵 Reset all walk-in sales</button>
+      </div>
+
+      <div class="border-t border-red-200 pt-3">
+        <button id="resetAllBtn" class="w-full px-3 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold">🗑 Reset EVERYTHING above</button>
+      </div>
+
+      <p id="resetMsg" class="text-sm mt-3 hidden"></p>
+    </div>
   </div>
 
   <script type="module">
@@ -262,7 +284,8 @@
       getAttendanceForDate, getAttendanceForMonth,
       getInventoryThresholds, setInventoryThresholdsBatch,
       getWalkinSalesByDate, getWalkinSalesByMonth, deleteWalkinSale,
-      getBonusConfig, setBonusConfig, getMonthlyIncentive, currentYyyymm
+      getBonusConfig, setBonusConfig, getMonthlyIncentive, currentYyyymm,
+      clearCollection
     } from './app.js';
     import { DENOMINATIONS, computeCashTotal } from './cash-shared.js';
     import { INVENTORY } from './inventory-data.js';
@@ -337,6 +360,7 @@
       initBonusConfig();
       initBonusIncentive();
       initCash();
+      initDangerZone();
     }
 
     async function loadForDate(date) {
@@ -1538,6 +1562,95 @@
       } catch (err) {
         el.innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
       }
+    }
+
+    // ===== DANGER ZONE — reset transactional data =====
+    const RESET_TARGETS = {
+      attendance:          'attendance records',
+      checklists_opening:  'opening checklists (incl. opening cash)',
+      checklists_closing:  'closing checklists (incl. closing cash, bonus sales, incentive)',
+      inventory:           'inventory entries',
+      walkin_sales:        'walk-in sales',
+    };
+
+    function showResetMsg(text, ok = true) {
+      const el = document.getElementById('resetMsg');
+      el.textContent = text;
+      el.className = `text-sm mt-3 font-semibold ${ok ? 'text-green-700' : 'text-red-700'}`;
+      el.classList.remove('hidden');
+    }
+
+    async function performReset(collections) {
+      const results = [];
+      for (const col of collections) {
+        try {
+          const n = await clearCollection(col);
+          results.push({ col, count: n, ok: true });
+        } catch (e) {
+          results.push({ col, error: e.message, ok: false });
+        }
+      }
+      // Bust caches that derive from this data
+      sessionStorage.removeItem('tsf_incentive_cache');
+      return results;
+    }
+
+    function initDangerZone() {
+      document.querySelectorAll('.reset-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const col = btn.dataset.reset;
+          const label = RESET_TARGETS[col] || col;
+          if (!confirm(`Delete ALL ${label}?\n\nThis cannot be undone.`)) return;
+
+          btn.disabled = true;
+          const orig = btn.textContent;
+          btn.textContent = 'Deleting…';
+          try {
+            const results = await performReset([col]);
+            const r = results[0];
+            if (r.ok) {
+              showResetMsg(`✓ Deleted ${r.count} ${label}. Reloading…`);
+              setTimeout(() => location.reload(), 1200);
+            } else {
+              showResetMsg(`✗ Failed: ${r.error}`, false);
+              btn.disabled = false;
+              btn.textContent = orig;
+            }
+          } catch (e) {
+            showResetMsg(`✗ ${e.message}`, false);
+            btn.disabled = false;
+            btn.textContent = orig;
+          }
+        });
+      });
+
+      document.getElementById('resetAllBtn').addEventListener('click', async () => {
+        const summary = Object.values(RESET_TARGETS).map(l => `• ${l}`).join('\n');
+        if (!confirm(`Delete EVERYTHING:\n\n${summary}\n\nSettings (passwords, thresholds, bonus config) are kept.\n\nThis cannot be undone.`)) return;
+
+        const btn = document.getElementById('resetAllBtn');
+        btn.disabled = true;
+        const orig = btn.textContent;
+        btn.textContent = 'Deleting everything…';
+        try {
+          const cols = Object.keys(RESET_TARGETS);
+          const results = await performReset(cols);
+          const total = results.reduce((s, r) => s + (r.count || 0), 0);
+          const failed = results.filter(r => !r.ok);
+          if (failed.length === 0) {
+            showResetMsg(`✓ Deleted ${total} document${total === 1 ? '' : 's'} across ${cols.length} collections. Reloading…`);
+            setTimeout(() => location.reload(), 1500);
+          } else {
+            showResetMsg(`Partial reset: deleted ${total} docs. Failed: ${failed.map(f => f.col).join(', ')}.`, false);
+            btn.disabled = false;
+            btn.textContent = orig;
+          }
+        } catch (e) {
+          showResetMsg(`✗ ${e.message}`, false);
+          btn.disabled = false;
+          btn.textContent = orig;
+        }
+      });
     }
   </script>
 </body>
